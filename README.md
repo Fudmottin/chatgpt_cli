@@ -23,7 +23,7 @@ The software provided by Fudmottin is strictly experimental. The user assumes
 all liability for its use. Fudmottin shall have no liability to the user for any
 damages whatsoever arising out of or related to the use of the software.
 
-By using this software, you agree to indemnify and hold harmless [COMPANY NAME], its
+By using this software, you agree to indemnify and hold harmless Fudmottin, its
 affiliates, directors, officers, employees, agents, and representatives from any and
 all claims, losses, liabilities, damages, costs, and expenses (including reasonable
 attorneys' fees) arising out of or related to your use of the software.
