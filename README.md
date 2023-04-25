@@ -1,0 +1,33 @@
+README.md:
+
+# chatgpt_cli
+
+OpenAI-powered command-line interface for chatbot conversations.
+
+This software uses [OpenAI](https://openai.com/) to generate chatbot conversations.
+To use this software, you will need to sign up for an API key from OpenAI. Please
+visit the OpenAI website to acquire an API key.
+
+By using this software, you agree to the terms set forth in the [LICENSE](LICENSE) and
+[LEGAL.txt](LEGAL.txt) documents. Please read these documents carefully before using
+the software.
+
+## License
+
+This software is licensed under the [MIT] license. Please refer to the
+[LICENSE](LICENSE) file for more information.
+
+## Legal
+
+The software provided by Fudmottin is strictly experimental. The user assumes
+all liability for its use. Fudmottin shall have no liability to the user for any
+damages whatsoever arising out of or related to the use of the software.
+
+By using this software, you agree to indemnify and hold harmless [COMPANY NAME], its
+affiliates, directors, officers, employees, agents, and representatives from any and
+all claims, losses, liabilities, damages, costs, and expenses (including reasonable
+attorneys' fees) arising out of or related to your use of the software.
+
+Please note that this software is provided on an "as is" basis without any warranties
+or representations of any kind, express or implied.
+
