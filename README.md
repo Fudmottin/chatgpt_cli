@@ -49,3 +49,5 @@ Pi somewhere.
 As this is experimental, there will be changes (unless I lose interest). Better
 command processing is desired. You type quit to quit. Or you can do CTRL-C. Integrating
 other models is also on the TODO list.
+
+Windows users are on their own. The code is pretty standard C++ stuff.
