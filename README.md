@@ -31,3 +31,21 @@ attorneys' fees) arising out of or related to your use of the software.
 Please note that this software is provided on an "as is" basis without any warranties
 or representations of any kind, express or implied.
 
+## Building
+
+mkdir build && cd build
+cmake ..
+make
+
+Hopefully that will work. I've been using macOS for development. There are a couple brew
+packages you need. One is cpr. This does the HTTPS request handling. The other is
+nlohmann-json. You'll never guess what it's used for.
+
+It is possible that you may have to modify the CMakeLists.txt file. Brew often uses
+/opt/homebrew blah blah blah. If you're on Linux apt-get is your friend. RPM distros
+should work also. I haven't tested on Linux yet. All I have is an unplugged Raspbery
+Pi somewhere.
+
+As this is experimental, there will be changes (unless I lose interest). Better
+command processing is desired. You type quit to quit. Or you can do CTRL-C. Integrating
+other models is also on the TODO list.
