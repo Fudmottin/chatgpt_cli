@@ -1,0 +1,9 @@
+# Find Editline library
+find_path(EDITLINE_INCLUDE_DIRS editline/readline.h)
+find_library(EDITLINE_LIBRARIES NAMES edit)
+
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(Editline DEFAULT_MSG EDITLINE_LIBRARIES EDITLINE_INCLUDE_DIRS)
+
+mark_as_advanced(EDITLINE_LIBRARIES EDITLINE_INCLUDE_DIRS)
+
