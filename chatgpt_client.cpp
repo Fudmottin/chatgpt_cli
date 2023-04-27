@@ -15,19 +15,9 @@ ChatGPTClient::ChatGPTClient(const string& api_key, const string& api_base_url)
     });
 }
 
-void ChatGPTClient::run_chat() {
-    while (true) {
-        string message;
-
-        cout << "> ";
-        getline(cin, message);
-
-        if (message == "quit") {
-            break;
-        }
-
-//        conversation_history.push_back({{"role", "system"}, {"content", "start chat"}});
-//        conversation_history.push_back({{"role", "user"}, {"content", message}});
+void ChatGPTClient::send_message(const string& message) {
+//      conversation_history.push_back({{"role", "system"}, {"content", "start chat"}});
+//      conversation_history.push_back({{"role", "user"}, {"content", message}});
 
         json request_data = {
 	    {"model", "gpt-3.5-turbo"},
@@ -45,8 +35,7 @@ void ChatGPTClient::run_chat() {
 
         cout << "Assistant: " << chatgpt_response << endl;
 
-//        conversation_history.push_back({{"role", "assistant"}, {"content", chatgpt_response}});
-    }
+//      conversation_history.push_back({{"role", "assistant"}, {"content", chatgpt_response}});
 }
 
 json ChatGPTClient::send_request(const json& request_data) {

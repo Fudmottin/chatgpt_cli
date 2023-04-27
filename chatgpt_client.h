@@ -11,7 +11,7 @@ using json = nlohmann::json;
 class ChatGPTClient {
 public:
     ChatGPTClient(const string& api_key, const string& api_base_url);
-    void run_chat();
+    void send_message(const string& message);
 
 private:
     json send_request(const json& request_data);
