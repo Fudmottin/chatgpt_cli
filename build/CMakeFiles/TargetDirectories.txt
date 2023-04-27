@@ -1,3 +1,0 @@
-/Users/davidsteuber/Projects/OpenAI/cpp/chatgpt_cli/build/CMakeFiles/chatgpt_cli.dir
-/Users/davidsteuber/Projects/OpenAI/cpp/chatgpt_cli/build/CMakeFiles/edit_cache.dir
-/Users/davidsteuber/Projects/OpenAI/cpp/chatgpt_cli/build/CMakeFiles/rebuild_cache.dir
