@@ -53,16 +53,28 @@ int main(int argc, char *argv[]) {
     el_set(el, EL_BIND, "^[[B", "ed-next-history", NULL);
 
     HistEvent ev;
-    history(hist, &ev, H_SETSIZE, 100);
+    history(hist, &ev, H_SETSIZE, 500);
 
     // Main loop
     int count;
     const char *line;
+    string multi_line_input;
     while ((line = el_gets(el, &count)) != nullptr) {
         if (count > 1) {
-	    string message = line;
-            chatgpt.send_message(message);
-            history(hist, &ev, H_ENTER, line);
+            // If the line ends with a backslash, store it and continue
+            if (line[count - 2] == '\\') {
+                multi_line_input.append(line, count - 2); // Exclude the backslash and newline
+            } else {
+                // Combine the stored input with the current line
+                multi_line_input.append(line);
+
+                // Add the multi-line input to the history and print it
+                history(hist, &ev, H_ENTER, multi_line_input.c_str());
+                chatgpt.send_message(multi_line_input);
+
+                // Reset the stored input for the next command
+                multi_line_input.clear();
+            }
         }
     }
 
