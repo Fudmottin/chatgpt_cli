@@ -2,6 +2,7 @@
 
 #include <string>
 #include <iostream>
+#include <fstream>
 #include <iomanip>
 #include <nlohmann/json.hpp>
 #include <cpr/cpr.h>
@@ -17,7 +18,7 @@ const vector<string> supported_models = {
 class ChatGPTClient {
 public:
     ChatGPTClient(const string& api_key, const string& api_base_url);
-    bool save_history(ofstream& of);
+    bool save_history(const string& file_name);
     void send_message(const string& message);
     void set_model(const string& model);
     void set_temperature(float temp);

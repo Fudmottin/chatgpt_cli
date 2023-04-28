@@ -1,11 +1,25 @@
-#include "utils.h"
+#include <iostream>
 #include <fstream>
 #include <sstream>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <ctime>
+#include <iomanip>
+#include <string>
 #include <pwd.h>
+#include "utils.h"
 
 using namespace std;
+
+string get_formatted_time() {
+    time_t t = time(nullptr);
+    tm tm = *localtime(&t);
+
+    ostringstream oss;
+    oss << put_time(&tm, "%Y-%m-%d-%H:%M:%S");
+
+    return oss.str();
+}
 
 string read_api_key_from_file(const string& filename) {
     ifstream file(filename);

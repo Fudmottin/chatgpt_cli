@@ -64,3 +64,23 @@ string ChatGPTClient::extract_response(const json& response) {
         }
     }
 }
+
+bool ChatGPTClient::save_history(const string& filename) {
+    ofstream ofs(filename);
+    if (!ofs) {
+        cerr << "Error: failed to open file " << filename << " for writing." << endl;
+        return false;
+    }
+
+    try {
+        ofs << setw(4) << conversation_history << endl;
+        ofs.close();
+    } catch (const exception& e) {
+        cerr << "Error: " << e.what() << endl;
+        ofs.close();
+        return false;
+    }
+
+    return true;
+}
+
