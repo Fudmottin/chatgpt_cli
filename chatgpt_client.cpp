@@ -1,33 +1,36 @@
 #include "chatgpt_client.h"
-#include <cpr/cpr.h>
-#include <iostream>
 
 using namespace std;
 using json = nlohmann::json;
 
 ChatGPTClient::ChatGPTClient(const string& api_key, const string& api_base_url)
-    : api_key(api_key), api_base_url(api_base_url), client() {
+    : api_key(api_key), api_base_url(api_base_url), model(supported_models[0]),
+      temperature(0.7), topp(0.7), client() {
     conversation_history = json::array();
     client.SetUrl(cpr::Url{api_base_url});
     client.SetHeader(cpr::Header{
         {"Authorization", "Bearer " + api_key},
         {"Content-Type", "application/json"},
     });
+    conversation_history.push_back({{"role", "system"}, {"content", "start chat"}});
 }
 
-void ChatGPTClient::send_message(const string& message) {
-//      conversation_history.push_back({{"role", "system"}, {"content", "start chat"}});
-//      conversation_history.push_back({{"role", "user"}, {"content", message}});
+void ChatGPTClient::set_model(const string& model) {this->model = model;}
 
+void ChatGPTClient::set_temperature(float temp) {temperature = temp;}
+
+void ChatGPTClient::set_topp(float topp) {this->topp = topp;}
+
+void ChatGPTClient::send_message(const string& message) {
         json request_data = {
-	    {"model", "gpt-3.5-turbo"},
+	    {"model", model},
             {"messages", json::array({
                 {
                     {"role", "user"},
                     {"content", message}
                 }
             })},
-            {"temperature", 0.7}
+            {"temperature", temperature}
     	};
 
         json response = send_request(request_data);
@@ -35,14 +38,15 @@ void ChatGPTClient::send_message(const string& message) {
 
         cout << "Assistant: " << chatgpt_response << endl;
 
-//      conversation_history.push_back({{"role", "assistant"}, {"content", chatgpt_response}});
 }
 
 json ChatGPTClient::send_request(const json& request_data) {
     auto body = request_data.dump();
     client.SetBody(cpr::Body{body});
 
+    conversation_history.push_back(request_data);
     auto response = client.Post();
+    conversation_history.push_back(json(response.text));
 
     return json::parse(response.text);
 }

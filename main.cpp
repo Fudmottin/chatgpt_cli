@@ -1,12 +1,11 @@
 #include <iostream>
 #include <histedit.h>
-#include <vector>
 #include <cstring>
 #include <histedit.h>
-#include <cstring>
 #include "utils.h"
 #include "chatgpt_client.h"
 
+using namespace std;
 
 // Prompt function
 const char *prompt(EditLine *e) {
@@ -14,18 +13,7 @@ const char *prompt(EditLine *e) {
 }
 
 int main(int argc, char *argv[]) {
-    const char* api_key_env_var = std::getenv("OPENAI_API_KEY");
-    string api_key;
-
-    if (api_key_env_var != nullptr)
-        api_key = api_key_env_var;
-    else
-        api_key = read_api_key_from_file(get_home_directory() + "/.env");
-
-    if (api_key.empty()) {
-        cerr << "Failed to read the API key from the .env file. Please ensure it is properly set." << endl;
-        return 1;
-    }
+    string api_key = get_api_key();
 
     ChatGPTClient chatgpt(api_key, "https://api.openai.com/v1/chat/completions");
 
@@ -33,13 +21,13 @@ int main(int argc, char *argv[]) {
     // Initialize the EditLine and History objects
     EditLine *el = el_init(argv[0], stdin, stdout, stderr);
     if (!el) {
-        std::cerr << "Failed to initialize EditLine." << std::endl;
+        cerr << "Failed to initialize EditLine." << endl;
         return 1;
     }
 
     History *hist = history_init();
     if (!hist) {
-        std::cerr << "Failed to initialize History." << std::endl;
+        cerr << "Failed to initialize History." << endl;
         el_end(el);
         return 1;
     }
