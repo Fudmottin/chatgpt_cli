@@ -11,18 +11,43 @@
 #include "chatgpt_client.h"
 
 using namespace std;
+using CommandHandler = void(*)(AIClient&, const vector<string>&);
 
-void cleanup() {
-    // Perform any necessary cleanup here, such as destroying the ChatGPTClient object
-    // ...
+std::map<std::string, CommandHandler> command_map;
+
+void quit_command(AIClient& ai_client, const vector<string>& parts) {
+    cout << "Quitting program." << endl;
+
+    // Clear the input buffer before exiting
+    cin.ignore(numeric_limits<streamsize>::max(), '\n');
+    exit(0);
 }
 
-// Prompt function
-const char *prompt(EditLine *e) {
-    return "> ";
+void set_chatgpt_temperature(AIClient& ai_client, const vector<string>& parts) {
+    ChatGPTClient* chatgpt_client = dynamic_cast<ChatGPTClient*>(&ai_client);
+    if (chatgpt_client) {
+	try {
+		float argument_value = std::stof(parts[1]);
+		chatgpt_client->set_temperature(argument_value);
+	} catch (const std::invalid_argument& e) {
+		std::cerr << "Invalid argument: " << e.what() << std::endl;
+	} catch (const std::out_of_range& e) {
+		std::cerr << "Out of range: " << e.what() << std::endl;
+	}
+    } else {
+	cout << "This command is only supported for ChatGPTClient objects." << endl;
+    }
 }
 
-void handle_command(const string& command, ChatGPTClient& chatgpt) {
+// Add more command functions here
+
+void register_commands() {
+    command_map["quit"] = quit_command;
+    command_map["set-chatgpt-temperature"] = set_chatgpt_temperature;
+    // Register more commands here
+}
+
+void handle_command(const string& command, AIClient& ai_client) {
     // Remove leading and trailing whitespace
     string trimmed_command = command;
     size_t start_pos = command.find_first_not_of(" \t\n\r\f\v");
@@ -48,20 +73,28 @@ void handle_command(const string& command, ChatGPTClient& chatgpt) {
         parts.push_back(part);
     }
 
-    if (parts.empty()) {
-        // Empty command, do nothing
-    } else if (parts[0] == "quit") {
-        cout << "Quitting program." << endl;
-
-        // Clear the input buffer before exiting
-        cin.ignore(numeric_limits<streamsize>::max(), '\n');
-        exit(0);
-    } else {
-        // Handle other commands
+    if (!parts.empty()) {
+        auto cmd_handler = command_map.find(parts[0]);
+        if (cmd_handler != command_map.end()) {
+            cmd_handler->second(ai_client, parts);
+        } else {
+            // Handle other commands or invalid commands
+        }
     }
 }
 
+void cleanup() {
+    // Perform any necessary cleanup here, such as destroying the ChatGPTClient object
+    // ...
+}
+
+// Prompt function
+const char *prompt(EditLine *e) {
+    return "> ";
+}
+
 int main(int argc, char *argv[]) {
+    register_commands();
     string api_key = get_api_key();
 
     ChatGPTClient chatgpt(api_key, "https://api.openai.com/v1/chat/completions");
