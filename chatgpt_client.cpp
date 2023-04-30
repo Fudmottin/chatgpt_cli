@@ -45,14 +45,40 @@ string ChatGPTClient::get_response() {
 }
 
 json ChatGPTClient::send_request(const json& request_data) {
-    auto body = request_data.dump();
+    const size_t max_history_length = 5;
+
+    // Create a new context_history object
+    json context_history;
+
+    // If conversation_history has more than max_history_length elements,
+    // copy the last max_history_length elements to context_history
+    if (conversation_history.size() > max_history_length) {
+        context_history = json(conversation_history.end() - max_history_length, conversation_history.end());
+    } else {
+        context_history = conversation_history;
+    }
+
+    // Add the new user message to context_history
+    context_history.push_back(request_data["messages"].back());
+
+    // You may also want to check if the tokens used in context_history are below the model's maximum token limit
+    // You can either trim individual messages or remove entire messages to fit within the token limit
+
+    // Prepare the request body
+    json updated_request_data = request_data;
+    updated_request_data["messages"] = context_history;
+    auto body = updated_request_data.dump();
     client.SetBody(cpr::Body{body});
 
-    conversation_history.push_back(request_data);
     auto response = client.Post();
-    conversation_history.push_back(json(response.text));
+    json response_json = json::parse(response.text);
 
-    return json::parse(response.text);
+    // Add the user message to the conversation history
+    conversation_history.push_back(request_data["messages"].back());
+    // Add the assistant message to the conversation history
+    conversation_history.push_back(response_json["choices"][0]["message"]);
+
+    return response_json;
 }
 
 string ChatGPTClient::extract_response(const json& response) {
