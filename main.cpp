@@ -17,7 +17,13 @@ std::map<std::string, CommandHandler> command_map;
 
 void quit_command(AIClient& ai_client, const vector<string>& parts) {
     cout << "Quitting program." << endl;
-
+    string chatgpt_cli_dir = get_chatgpt_cli_dir();
+    if (chatgpt_cli_dir != "") {
+        string time_stamp = get_formatted_time();
+	string history_file = chatgpt_cli_dir + "/chatgpt_history_" +
+		time_stamp + ".json";
+	if (ai_client.save_history(history_file)) cout << "History saved." << endl;
+    }
     // Clear the input buffer before exiting
     cin.ignore(numeric_limits<streamsize>::max(), '\n');
     exit(0);
