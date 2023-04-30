@@ -4,8 +4,9 @@ using namespace std;
 using json = nlohmann::json;
 
 ChatGPTClient::ChatGPTClient(const string& api_key, const string& api_base_url)
-    : api_key(api_key), api_base_url(api_base_url), model(supported_models[0]),
-      temperature(0.7), topp(0.7), client() {
+    : AIClient(), // Initialize the base class
+      api_key(api_key), api_base_url(api_base_url), model(supported_models[0]),
+      temperature(0.7), topp(0.7), client(), chatgpt_response() {
     conversation_history = json::array();
     client.SetUrl(cpr::Url{api_base_url});
     client.SetHeader(cpr::Header{
@@ -34,10 +35,13 @@ void ChatGPTClient::send_message(const string& message) {
     	};
 
         json response = send_request(request_data);
-        string chatgpt_response = extract_response(response);
+        chatgpt_response = extract_response(response);
+}
 
-        cout << "Assistant: " << chatgpt_response << endl;
-
+string ChatGPTClient::get_response() {
+	string s = "\nAssistent: " + chatgpt_response + "\n";
+        chatgpt_response.clear();
+	return s;
 }
 
 json ChatGPTClient::send_request(const json& request_data) {
