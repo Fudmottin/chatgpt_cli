@@ -8,6 +8,7 @@
 #include <histedit.h>
 #include "utils.h"
 #include <algorithm>
+#include "chatgptapp.h"
 #include "chatgpt_client.h"
 
 using namespace std;
@@ -49,6 +50,7 @@ void set_chatgpt_temperature(AIClient& ai_client, const vector<string>& parts) {
 
 void register_commands() {
     command_map["quit"] = quit_command;
+    command_map["exit"] = quit_command;
     command_map["set-chatgpt-temperature"] = set_chatgpt_temperature;
     // Register more commands here
 }
@@ -89,11 +91,6 @@ void handle_command(const string& command, AIClient& ai_client) {
     }
 }
 
-void cleanup() {
-    // Perform any necessary cleanup here, such as destroying the ChatGPTClient object
-    // ...
-}
-
 // Prompt function
 const char *prompt(EditLine *e) {
     return "> ";
@@ -102,12 +99,9 @@ const char *prompt(EditLine *e) {
 int main(int argc, char *argv[]) {
     register_commands();
     string api_key = get_api_key();
+    util::history_filename = get_chatgpt_cli_dir() + "/history";
 
     ChatGPTClient chatgpt(api_key, "https://api.openai.com/v1/chat/completions");
-
-    // Register the cleanup function to be called when the program exits
-    atexit(cleanup);
-
 
     // Initialize the EditLine and History objects
     EditLine *el = el_init(argv[0], stdin, stdout, stderr);
@@ -133,6 +127,9 @@ int main(int argc, char *argv[]) {
 
     HistEvent ev;
     history(hist, &ev, H_SETSIZE, 500);
+    load_history_from_file(hist);
+
+    ChatGPTApp app(el, hist);
 
     // Main loop
     int count;
@@ -142,17 +139,16 @@ int main(int argc, char *argv[]) {
         if (count > 1) {
             // If the line ends with a backslash, store it and continue
             if (line[count - 2] == '\\') {
-                multi_line_input.append(line, count - 2); // Exclude the backslash and newline
+                multi_line_input.append(line, count);
             } else {
                 // Combine the stored input with the current line
                 multi_line_input.append(line);
 
                 // Check if the input is a command
                 if (!multi_line_input.empty() && multi_line_input.front() == '/') {
-                    // Handle the command
                     handle_command(multi_line_input, chatgpt);
+                    history(hist, &ev, H_ENTER, multi_line_input.c_str());
                 } else {
-                    // Add the multi-line input to the history and send it to the server
                     history(hist, &ev, H_ENTER, multi_line_input.c_str());
                     chatgpt.send_message(multi_line_input);
 		    cout << chatgpt.get_response();
@@ -163,10 +159,6 @@ int main(int argc, char *argv[]) {
             }
         }
     }
-
-    // Cleanup
-    history_end(hist);
-    el_end(el);
 
     return 0;
 }

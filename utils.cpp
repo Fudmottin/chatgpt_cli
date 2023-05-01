@@ -7,9 +7,54 @@
 #include <iomanip>
 #include <string>
 #include <pwd.h>
+#include <histedit.h>
 #include "utils.h"
 
+namespace util {
+    std::string history_filename;
+}
+
 using namespace std;
+
+void save_history_to_file(History *hist) {
+    ofstream history_file(util::history_filename, ios::app);
+
+    if (!history_file.is_open()) {
+        cerr << "Failed to open history file for writing." << endl;
+        return;
+    }
+
+    HistEvent ev;
+    history(hist, &ev, H_FIRST);
+    do {
+        history_file << ev.str << endl;
+    } while (history(hist, &ev, H_NEXT) == 0);
+
+    history_file.close();
+}
+
+void load_history_from_file(History *hist) {
+    ifstream history_file(util::history_filename);
+
+    if (!history_file.is_open()) {
+        return;
+    }
+
+    HistEvent ev;
+    string line;
+    while (getline(history_file, line)) {
+        history(hist, &ev, H_ENTER, line.c_str());
+    }
+
+    history_file.close();
+}
+
+string trim_content(const string& content, size_t max_length) {
+    if (content.size() > max_length) {
+        return content.substr(0, max_length) + "...";
+    }
+    return content;
+}
 
 string get_formatted_time() {
     time_t t = time(nullptr);

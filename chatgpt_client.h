@@ -18,7 +18,7 @@ const vector<string> supported_models = {
 
 class ChatGPTClient : public AIClient {
 public:
-    ChatGPTClient(const string& api_key, const string& api_base_url);
+    explicit ChatGPTClient(const string& api_key, const string& api_base_url);
     bool save_history(const string& file_name) override;
     void send_message(const string& message) override;
     string get_response() override;
@@ -26,17 +26,17 @@ public:
     void set_model(const string& model);
     void set_temperature(float temp);
     void set_topp(float topp);
+    void set_max_tokens(int tok);
 
 private:
     json send_request(const json& request_data);
     string extract_response(const json& response);
+    bool is_similar_to_last_message(const json& new_message);
 
-    string api_key;
-    string api_base_url;
     string model;
     string chatgpt_response;
     float temperature;
     float topp;
-    cpr::Session client;
+    int max_tokens;
     json conversation_history;
 };

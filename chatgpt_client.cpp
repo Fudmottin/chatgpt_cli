@@ -4,15 +4,10 @@ using namespace std;
 using json = nlohmann::json;
 
 ChatGPTClient::ChatGPTClient(const string& api_key, const string& api_base_url)
-    : AIClient(), // Initialize the base class
-      api_key(api_key), api_base_url(api_base_url), model(supported_models[0]),
-      temperature(0.7), topp(0.7), client(), chatgpt_response() {
+    : AIClient(api_key, api_base_url),
+      model(supported_models[0]), temperature(0.7),
+      topp(0.7), chatgpt_response(), max_tokens(2048) {
     conversation_history = json::array();
-    client.SetUrl(cpr::Url{api_base_url});
-    client.SetHeader(cpr::Header{
-        {"Authorization", "Bearer " + api_key},
-        {"Content-Type", "application/json"},
-    });
     conversation_history.push_back({{"role", "system"}, {"content", "start chat"}});
 }
 
@@ -21,6 +16,8 @@ void ChatGPTClient::set_model(const string& model) {this->model = model;}
 void ChatGPTClient::set_temperature(float temp) {temperature = temp;}
 
 void ChatGPTClient::set_topp(float topp) {this->topp = topp;}
+
+void ChatGPTClient::set_max_tokens(int tok) {max_tokens = tok;}
 
 void ChatGPTClient::send_message(const string& message) {
         json request_data = {
@@ -31,7 +28,8 @@ void ChatGPTClient::send_message(const string& message) {
                     {"content", message}
                 }
             })},
-            {"temperature", temperature}
+            {"temperature", temperature},
+	    {"max_tokens", max_tokens}
     	};
 
         json response = send_request(request_data);
@@ -46,40 +44,91 @@ string ChatGPTClient::get_response() {
 
 json ChatGPTClient::send_request(const json& request_data) {
     const size_t max_history_length = 5;
-
-    // Create a new context_history object
     json context_history;
 
-    // If conversation_history has more than max_history_length elements,
-    // copy the last max_history_length elements to context_history
     if (conversation_history.size() > max_history_length) {
         context_history = json(conversation_history.end() - max_history_length, conversation_history.end());
     } else {
         context_history = conversation_history;
     }
 
-    // Add the new user message to context_history
     context_history.push_back(request_data["messages"].back());
 
-    // You may also want to check if the tokens used in context_history are below the model's maximum token limit
-    // You can either trim individual messages or remove entire messages to fit within the token limit
+    for (size_t i = 0; i < context_history.size() - 1; ++i) {
+        string message_content = context_history[i]["content"].get<std::string>();
+        string trimmed_content = trim_content(message_content, 100);
+        context_history[i]["content"] = trimmed_content;
+    }
 
-    // Prepare the request body
     json updated_request_data = request_data;
     updated_request_data["messages"] = context_history;
     auto body = updated_request_data.dump();
+
     client.SetBody(cpr::Body{body});
 
     auto response = client.Post();
+
+    if (response.status_code != 200) {
+        cerr << "Error: " << response.status_code << " " << response.error.message << endl;
+        throw runtime_error("Request failed");
+    }
+
+    if (response.text.empty()) {
+        cerr << "Error: Empty response received" << endl;
+        throw runtime_error("Empty response");
+    }
+
     json response_json = json::parse(response.text);
 
-    // Add the user message to the conversation history
+    // Check if the response was truncated due to reaching the token limit
+    if (response_json["choices"][0]["finish_reason"] != "stop" &&
+        !response_json["choices"][0]["text"].is_null()) {
+        string response_text = response_json["choices"][0]["text"].get<string>();
+        string last_words = response_text.substr(response_text.find_last_of(' ') + 1);
+        json new_message = {{"role", "user"}, {"content", last_words}};
+
+        if (!is_similar_to_last_message(new_message)) {
+            json new_request_data = {
+                {"messages", updated_request_data["messages"]},
+                {"model", model},
+                {"temperature", temperature},
+                {"top_p", topp},
+                {"n", 1},
+                {"max_tokens", max_tokens - response_json["choices"][0]["text"].size()}
+            };
+            new_request_data["messages"].push_back(new_message);
+
+            json new_response_json = send_request(new_request_data);
+
+            response_json["choices"][0]["text"] += new_response_json["choices"][0]["text"];
+            response_json["choices"][0]["finish_reason"] = new_response_json["choices"][0]["finish_reason"];
+        }
+    }
+
     conversation_history.push_back(request_data["messages"].back());
-    // Add the assistant message to the conversation history
     conversation_history.push_back(response_json["choices"][0]["message"]);
 
     return response_json;
 }
+
+bool ChatGPTClient::is_similar_to_last_message(const json& new_message) {
+    if (conversation_history.empty()) {
+        return false;
+    }
+
+    const string& last_message_content = conversation_history.back()["content"];
+    const string& new_message_content = new_message["content"];
+
+    size_t common_prefix_length = 0;
+    while (common_prefix_length < last_message_content.length() &&
+           common_prefix_length < new_message_content.length() &&
+           last_message_content[common_prefix_length] == new_message_content[common_prefix_length]) {
+        ++common_prefix_length;
+    }
+
+    return common_prefix_length > 0.8 * min(last_message_content.length(), new_message_content.length());
+}
+
 
 string ChatGPTClient::extract_response(const json& response) {
     if (response.contains("choices") && !response["choices"].empty()) {
