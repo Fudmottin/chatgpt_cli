@@ -8,19 +8,21 @@
 #include <histedit.h>
 #include "utils.h"
 #include <algorithm>
-#include "chatgptapp.h"
 #include "chatgpt_client.h"
 
 using namespace std;
 using CommandHandler = void(*)(AIClient&, const vector<string>&);
 
-std::map<std::string, CommandHandler> command_map;
+// Hidious global varialbes
+static map<string, CommandHandler> command_map;
+static EditLine *el = 0;
+static History *hist = 0;
 
 void quit_command(AIClient& ai_client, const vector<string>& parts) {
     cout << "Quitting program." << endl;
-    string chatgpt_cli_dir = get_chatgpt_cli_dir();
+    string chatgpt_cli_dir = util::get_chatgpt_cli_dir();
     if (chatgpt_cli_dir != "") {
-        string time_stamp = get_formatted_time();
+        string time_stamp = util::get_formatted_time();
 	string history_file = chatgpt_cli_dir + "/chatgpt_history_" +
 		time_stamp + ".json";
 	if (ai_client.save_history(history_file)) cout << "History saved." << endl;
@@ -34,12 +36,12 @@ void set_chatgpt_temperature(AIClient& ai_client, const vector<string>& parts) {
     ChatGPTClient* chatgpt_client = dynamic_cast<ChatGPTClient*>(&ai_client);
     if (chatgpt_client) {
 	try {
-		float argument_value = std::stof(parts[1]);
+		float argument_value = stof(parts[1]);
 		chatgpt_client->set_temperature(argument_value);
-	} catch (const std::invalid_argument& e) {
-		std::cerr << "Invalid argument: " << e.what() << std::endl;
-	} catch (const std::out_of_range& e) {
-		std::cerr << "Out of range: " << e.what() << std::endl;
+	} catch (const invalid_argument& e) {
+		cerr << "Invalid argument: " << e.what() << endl;
+	} catch (const out_of_range& e) {
+		cerr << "Out of range: " << e.what() << endl;
 	}
     } else {
 	cout << "This command is only supported for ChatGPTClient objects." << endl;
@@ -91,6 +93,12 @@ void handle_command(const string& command, AIClient& ai_client) {
     }
 }
 
+void cleanup() {
+    util::save_history_to_file(hist);
+    history_end(hist);
+    el_end(el);
+}
+
 // Prompt function
 const char *prompt(EditLine *e) {
     return "> ";
@@ -98,19 +106,24 @@ const char *prompt(EditLine *e) {
 
 int main(int argc, char *argv[]) {
     register_commands();
-    string api_key = get_api_key();
-    util::history_filename = get_chatgpt_cli_dir() + "/history";
+    string api_key = util::get_api_key();
+
+    util::history_filename = util::get_chatgpt_cli_dir() + "/history";
 
     ChatGPTClient chatgpt(api_key, "https://api.openai.com/v1/chat/completions");
 
+    // Register the cleanup function to be called when the program exits
+    atexit(cleanup);
+
+
     // Initialize the EditLine and History objects
-    EditLine *el = el_init(argv[0], stdin, stdout, stderr);
+    el = el_init(argv[0], stdin, stdout, stderr);
     if (!el) {
         cerr << "Failed to initialize EditLine." << endl;
         return 1;
     }
 
-    History *hist = history_init();
+    hist = history_init();
     if (!hist) {
         cerr << "Failed to initialize History." << endl;
         el_end(el);
@@ -127,37 +140,35 @@ int main(int argc, char *argv[]) {
 
     HistEvent ev;
     history(hist, &ev, H_SETSIZE, 500);
-    load_history_from_file(hist);
-
-    ChatGPTApp app(el, hist);
+    util::load_history_from_file(hist);
 
     // Main loop
     int count;
     const char *line;
     string multi_line_input;
     while ((line = el_gets(el, &count)) != nullptr) {
-        if (count > 1) {
-            // If the line ends with a backslash, store it and continue
-            if (line[count - 2] == '\\') {
-                multi_line_input.append(line, count);
-            } else {
-                // Combine the stored input with the current line
-                multi_line_input.append(line);
-
-                // Check if the input is a command
-                if (!multi_line_input.empty() && multi_line_input.front() == '/') {
-                    handle_command(multi_line_input, chatgpt);
-                    history(hist, &ev, H_ENTER, multi_line_input.c_str());
-                } else {
-                    history(hist, &ev, H_ENTER, multi_line_input.c_str());
-                    chatgpt.send_message(multi_line_input);
-		    cout << chatgpt.get_response();
-                }
-
-                // Reset the stored input for the next command
-                multi_line_input.clear();
-            }
-        }
+	try {
+    	    if (count > 1) {
+	        if (line[count - 2] == '\\') {
+		    multi_line_input.append(line, count);
+	        } else {
+		    multi_line_input.append(line);
+		    if (!multi_line_input.empty() && multi_line_input.front() == '/') {
+			handle_command(multi_line_input, chatgpt);
+			history(hist, &ev, H_ENTER, multi_line_input.c_str());
+		    } else {
+		        history(hist, &ev, H_ENTER, multi_line_input.c_str());
+			chatgpt.send_message(multi_line_input);
+			cout << chatgpt.get_response();
+		    }
+		    multi_line_input.clear();
+		}
+	     }
+	}
+	catch (...) {
+	    cout << "Unhandled exception. Sorry. Quitting as gracefully as I can.\n";
+            break;
+	}
     }
 
     return 0;

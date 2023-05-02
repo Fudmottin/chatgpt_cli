@@ -56,7 +56,7 @@ json ChatGPTClient::send_request(const json& request_data) {
 
     for (size_t i = 0; i < context_history.size() - 1; ++i) {
         string message_content = context_history[i]["content"].get<std::string>();
-        string trimmed_content = trim_content(message_content, 100);
+        string trimmed_content = util::trim_content(message_content, 100);
         context_history[i]["content"] = trimmed_content;
     }
 

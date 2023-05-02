@@ -16,6 +16,8 @@ namespace util {
 
 using namespace std;
 
+namespace util {
+
 void save_history_to_file(History *hist) {
     ofstream history_file(util::history_filename, ios::app);
 
@@ -137,3 +139,4 @@ string get_chatgpt_cli_dir() {
     return chatgpt_cli_dir;
 }
 
+} // namespace util
