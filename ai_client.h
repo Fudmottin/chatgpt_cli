@@ -11,8 +11,7 @@ class AIClient {
 public:
     AIClient(const string& api_key, const string& api_base_url);
     virtual ~AIClient() = default;
-    virtual void send_message(const string& message) = 0;
-    virtual string get_response() = 0;
+    virtual string send_message(const string& message) = 0;
     virtual bool save_history(const string& file_name) = 0;
 
 protected:

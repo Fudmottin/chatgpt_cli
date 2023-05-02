@@ -158,8 +158,7 @@ int main(int argc, char *argv[]) {
 			history(hist, &ev, H_ENTER, multi_line_input.c_str());
 		    } else {
 		        history(hist, &ev, H_ENTER, multi_line_input.c_str());
-			chatgpt.send_message(multi_line_input);
-			cout << chatgpt.get_response();
+			cout << chatgpt.send_message(multi_line_input);
 		    }
 		    multi_line_input.clear();
 		}

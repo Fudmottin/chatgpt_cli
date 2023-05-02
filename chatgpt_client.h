@@ -20,12 +20,10 @@ class ChatGPTClient : public AIClient {
 public:
     explicit ChatGPTClient(const string& api_key, const string& api_base_url);
     bool save_history(const string& file_name) override;
-    void send_message(const string& message) override;
-    string get_response() override;
+    string send_message(const string& message) override;
 
     void set_model(const string& model);
     void set_temperature(float temp);
-    void set_topp(float topp);
     void set_max_tokens(int tok);
 
 private:
@@ -36,7 +34,6 @@ private:
     string model;
     string chatgpt_response;
     float temperature;
-    float topp;
     int max_tokens;
     json conversation_history;
 };

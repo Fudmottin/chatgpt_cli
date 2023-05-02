@@ -6,7 +6,7 @@ using json = nlohmann::json;
 ChatGPTClient::ChatGPTClient(const string& api_key, const string& api_base_url)
     : AIClient(api_key, api_base_url),
       model(supported_models[0]), temperature(0.7),
-      topp(0.7), chatgpt_response(), max_tokens(2048) {
+      chatgpt_response(), max_tokens(2048) {
     conversation_history = json::array();
     conversation_history.push_back({{"role", "system"}, {"content", "start chat"}});
 }
@@ -15,11 +15,9 @@ void ChatGPTClient::set_model(const string& model) {this->model = model;}
 
 void ChatGPTClient::set_temperature(float temp) {temperature = temp;}
 
-void ChatGPTClient::set_topp(float topp) {this->topp = topp;}
-
 void ChatGPTClient::set_max_tokens(int tok) {max_tokens = tok;}
 
-void ChatGPTClient::send_message(const string& message) {
+string ChatGPTClient::send_message(const string& message) {
         json request_data = {
 	    {"model", model},
             {"messages", json::array({
@@ -34,12 +32,7 @@ void ChatGPTClient::send_message(const string& message) {
 
         json response = send_request(request_data);
         chatgpt_response = extract_response(response);
-}
-
-string ChatGPTClient::get_response() {
-	string s = "\nAssistent: " + chatgpt_response + "\n";
-        chatgpt_response.clear();
-	return s;
+	return string("\nAssitent: " + chatgpt_response + "\n");
 }
 
 json ChatGPTClient::send_request(const json& request_data) {
@@ -92,7 +85,6 @@ json ChatGPTClient::send_request(const json& request_data) {
                 {"messages", updated_request_data["messages"]},
                 {"model", model},
                 {"temperature", temperature},
-                {"top_p", topp},
                 {"n", 1},
                 {"max_tokens", max_tokens - response_json["choices"][0]["text"].size()}
             };
