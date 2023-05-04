@@ -6,7 +6,7 @@ using json = nlohmann::json;
 ChatClient::ChatClient(const string& api_key)
     : OpenAIClient(api_key) {
     api_base_url += string("v1/chat/completions");
-    model = string("gpt-3.5-turbo");
+    model = string("gpt-4");
     client.SetUrl(cpr::Url{api_base_url});
 }
 
@@ -34,7 +34,7 @@ string ChatClient::send_message(const string& message) {
         }
 	catch (...) {
             cout << "Unknown exception thrown from ChatClient::send_request()" << endl;
-	    exit(0);
+	    return string("\n");
 	}
 
         auto chat_response = extract_response(response);
@@ -50,8 +50,6 @@ json ChatClient::send_request(const json& request_data) {
     const size_t max_words = 42;
     vector<string> context = {};
 
-    cout << "dealing with context" << endl;
-
     if (conversation_history.size() > max_context_length) {
 	auto first = conversation_history.end() - max_context_length;
         auto last = conversation_history.end();
@@ -65,12 +63,8 @@ json ChatClient::send_request(const json& request_data) {
         context[i] = util::trim_content(context[i], max_words);
     }
 
-    cout << "context dealt with. Adding new message." << endl;
-
     string content = request_data["messages"][0]["content"].get<string>();
     context.push_back(content);
-
-    cout << "new message added" << endl;
 
     string concatenated_context;
     for (const auto& str : context) {

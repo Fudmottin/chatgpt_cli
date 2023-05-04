@@ -139,7 +139,7 @@ int main(int argc, char *argv[]) {
 	try {
     	    if (count > 1) {
 	        if (line[count - 2] == '\\') {
-		    multi_line_input.append(line, count);
+		    multi_line_input.append(line, count -2);
 	        } else {
 		    multi_line_input.append(line);
 		    if (!multi_line_input.empty() && multi_line_input.front() == '/') {
