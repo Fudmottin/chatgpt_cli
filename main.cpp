@@ -8,17 +8,17 @@
 #include <histedit.h>
 #include "utils.h"
 #include <algorithm>
-#include "chatgpt_client.h"
+#include "chat_client.h"
 
 using namespace std;
-using CommandHandler = void(*)(AIClient&, const vector<string>&);
+using CommandHandler = void(*)(OpenAIClient&, const vector<string>&);
 
 // Hidious global varialbes
 static map<string, CommandHandler> command_map;
 static EditLine *el = 0;
 static History *hist = 0;
 
-void quit_command(AIClient& ai_client, const vector<string>& parts) {
+void quit_command(OpenAIClient& ai_client, const vector<string>& parts) {
     cout << "Quitting program." << endl;
     string chatgpt_cli_dir = util::get_chatgpt_cli_dir();
     if (chatgpt_cli_dir != "") {
@@ -32,20 +32,9 @@ void quit_command(AIClient& ai_client, const vector<string>& parts) {
     exit(0);
 }
 
-void set_chatgpt_temperature(AIClient& ai_client, const vector<string>& parts) {
-    ChatGPTClient* chatgpt_client = dynamic_cast<ChatGPTClient*>(&ai_client);
-    if (chatgpt_client) {
-	try {
-		float argument_value = stof(parts[1]);
-		chatgpt_client->set_temperature(argument_value);
-	} catch (const invalid_argument& e) {
-		cerr << "Invalid argument: " << e.what() << endl;
-	} catch (const out_of_range& e) {
-		cerr << "Out of range: " << e.what() << endl;
-	}
-    } else {
-	cout << "This command is only supported for ChatGPTClient objects." << endl;
-    }
+void set_temperature(OpenAIClient& ai_client, const vector<string>& parts) {
+    float argument_value = stof(parts[1]);
+    ai_client.set_temperature(argument_value);
 }
 
 // Add more command functions here
@@ -53,11 +42,11 @@ void set_chatgpt_temperature(AIClient& ai_client, const vector<string>& parts) {
 void register_commands() {
     command_map["quit"] = quit_command;
     command_map["exit"] = quit_command;
-    command_map["set-chatgpt-temperature"] = set_chatgpt_temperature;
+    command_map["set-chatgpt-temperature"] = set_temperature;
     // Register more commands here
 }
 
-void handle_command(const string& command, AIClient& ai_client) {
+void handle_command(const string& command, OpenAIClient& ai_client) {
     // Remove leading and trailing whitespace
     string trimmed_command = command;
     size_t start_pos = command.find_first_not_of(" \t\n\r\f\v");
@@ -88,7 +77,7 @@ void handle_command(const string& command, AIClient& ai_client) {
         if (cmd_handler != command_map.end()) {
             cmd_handler->second(ai_client, parts);
         } else {
-            // Handle other commands or invalid commands
+	    cout << "Command: " << parts[0] << " not recognized. Ignored.\n";
         }
     }
 }
@@ -110,7 +99,7 @@ int main(int argc, char *argv[]) {
 
     util::history_filename = util::get_chatgpt_cli_dir() + "/history";
 
-    ChatGPTClient chatgpt(api_key, "https://api.openai.com/v1/chat/completions");
+    ChatClient chatgpt(api_key);
 
     // Register the cleanup function to be called when the program exits
     atexit(cleanup);
@@ -158,7 +147,7 @@ int main(int argc, char *argv[]) {
 			history(hist, &ev, H_ENTER, multi_line_input.c_str());
 		    } else {
 		        history(hist, &ev, H_ENTER, multi_line_input.c_str());
-			cout << chatgpt.send_message(multi_line_input);
+			cout << chatgpt.send_message(multi_line_input) << endl;
 		    }
 		    multi_line_input.clear();
 		}

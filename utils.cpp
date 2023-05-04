@@ -1,11 +1,12 @@
 #include <iostream>
 #include <fstream>
+#include <string>
 #include <sstream>
+#include <algorithm>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <ctime>
 #include <iomanip>
-#include <string>
 #include <pwd.h>
 #include <histedit.h>
 #include "utils.h"
@@ -17,6 +18,10 @@ namespace util {
 using namespace std;
 
 namespace util {
+
+float clamp(float val, float lower, float upper) {
+    return min(max(val, lower), upper);
+}
 
 void save_history_to_file(History *hist) {
     ofstream history_file(util::history_filename, ios::app);
@@ -51,11 +56,34 @@ void load_history_from_file(History *hist) {
     history_file.close();
 }
 
-string trim_content(const string& content, size_t max_length) {
-    if (content.size() > max_length) {
-        return content.substr(0, max_length) + "...";
+string trim_content(const string& content, size_t max_words) {
+    string modified_content = content;
+
+    // Remove "user: " and "AI: " prefixes
+    if (modified_content.substr(0, 6) == "user: ") {
+        modified_content = modified_content.substr(6);
+    } else if (modified_content.substr(0, 4) == "AI: ") {
+        modified_content = modified_content.substr(4);
     }
-    return content;
+
+    istringstream iss(modified_content);
+    string word;
+    string result;
+    size_t word_count = 0;
+
+    while (iss >> word && word_count < max_words) {
+        if (word_count > 0) {
+            result += " ";
+        }
+        result += word;
+        word_count++;
+    }
+
+    if (iss >> word) { // Check if there are more words in the original content
+        result += "...";
+    }
+
+    return result;
 }
 
 string get_formatted_time() {
