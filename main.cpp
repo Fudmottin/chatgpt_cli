@@ -9,6 +9,7 @@
 #include "utils.h"
 #include <algorithm>
 #include "chat_client.h"
+#include "openai_image.h"
 
 using namespace std;
 using CommandHandler = void(*)(OpenAIClient&, const vector<string>&);
@@ -33,8 +34,14 @@ void quit_command(OpenAIClient& ai_client, const vector<string>& parts) {
 }
 
 void set_temperature(OpenAIClient& ai_client, const vector<string>& parts) {
-    float argument_value = stof(parts[1]);
-    ai_client.set_temperature(argument_value);
+    try {
+        float argument_value = stof(parts[1]);
+        ai_client.set_temperature(argument_value);
+    } catch (const std::invalid_argument& e) {
+        cout << "Invalid temperature value. Please provide a valid number." << endl;
+    } catch (const std::out_of_range& e) {
+        cout << "Temperature value out of range. Please provide a valid number within the acceptable range." << endl;
+    }
 }
 
 // Add more command functions here
