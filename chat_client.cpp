@@ -81,8 +81,6 @@ json ChatClient::send_request(const json& request_data) {
 
     auto body = updated_request_data.dump();
 
-    cout << updated_request_data.dump() << endl;
-	
     client.SetBody(cpr::Body{body});
 
     auto response = client.Post();

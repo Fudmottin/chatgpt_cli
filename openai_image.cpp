@@ -62,18 +62,17 @@ string OpenAIImage::process_result(const json& result) {
                 string image_data_base64 = entry["b64_json"];
                 auto binary_data = cppcodec::base64_rfc4648::decode(image_data_base64);
 
-                // Modify the file name to include the loop counter
                 string file_name = save_dir + "/image_" + util::get_formatted_time() + "_" + to_string(counter) + ".png";
                 ofstream image_file(file_name, ios::binary);
                 image_file.write(reinterpret_cast<const char*>(binary_data.data()), binary_data.size());
                 image_file.close();
 
                 filenames.push_back(file_name);
-                counter++; // Increment the loop counter
+                counter++;
             }
         }
     }
-    return join(filenames, ", ");
+    return join(filenames, "\n");
 }
 
 bool OpenAIImage::save_history(const string& file_name) {

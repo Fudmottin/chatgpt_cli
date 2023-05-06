@@ -62,7 +62,7 @@ void make_image_command(OpenAIClient& ai_client, const vector<string>& parts) {
     string filenames = image_generator.send_message(image_prompt);
 
     if (!filenames.empty()) {
-        cout << "Generated images saved at: " << filenames << endl;
+        cout << "\nGenerated images saved at: " << endl << filenames << endl;
     } else {
         cout << "Failed to generate images." << endl;
     }
