@@ -25,7 +25,7 @@ void quit_command(OpenAIClient& ai_client, const vector<string>& parts) {
     if (chatgpt_cli_dir != "") {
         string time_stamp = util::get_formatted_time();
 	string history_file = chatgpt_cli_dir + "/chatgpt_history_" +
-		time_stamp + ".json";
+		time_stamp + ".txt";
 	if (ai_client.save_history(history_file)) cout << "History saved." << endl;
     }
     // Clear the input buffer before exiting
@@ -44,12 +44,37 @@ void set_temperature(OpenAIClient& ai_client, const vector<string>& parts) {
     }
 }
 
+void make_image_command(OpenAIClient& ai_client, const vector<string>& parts) {
+    if (parts.size() < 2) {
+        cout << "Usage: /make-image image prompt" << endl;
+        return;
+    }
+
+    string image_prompt;
+    for (size_t i = 1; i < parts.size(); ++i) {
+        image_prompt += parts[i];
+        if (i < parts.size() - 1) {
+            image_prompt += " ";
+        }
+    }
+
+    OpenAIImage image_generator(ai_client.get_api_key());
+    string filenames = image_generator.send_message(image_prompt);
+
+    if (!filenames.empty()) {
+        cout << "Generated images saved at: " << filenames << endl;
+    } else {
+        cout << "Failed to generate images." << endl;
+    }
+}
+
 // Add more command functions here
 
 void register_commands() {
     command_map["quit"] = quit_command;
     command_map["exit"] = quit_command;
     command_map["set-chatgpt-temperature"] = set_temperature;
+    command_map["make-image"] = make_image_command;
     // Register more commands here
 }
 

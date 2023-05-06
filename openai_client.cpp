@@ -28,3 +28,7 @@ void OpenAIClient::set_frequency_penalty(float penalty) {
 	frequency_penalty = util::clamp(penalty, -2.0, 2.0);
 }
 
+string OpenAIClient::get_api_key() const {
+    return api_key;
+}
+

@@ -26,10 +26,6 @@ string OpenAIImage::send_message(const string& message) {
     };
 
     client.SetUrl(api_base_url);
-    client.SetHeader({
-        {"Content-Type", "application/json"},
-        {"Authorization", "Bearer " + api_key}
-    });
     client.SetBody(payload.dump());
 
     auto response = client.Post();
@@ -49,16 +45,23 @@ string OpenAIImage::send_message(const string& message) {
 string OpenAIImage::process_result(const json& result) {
     vector<string> filenames;
     string save_dir = util::get_chatgpt_cli_dir();
-    for (const auto& entry : result["data"]) {
-        string image_data_base64 = entry["image"];
-        auto binary_data = cppcodec::base64_rfc4648::decode(image_data_base64);
+    size_t counter = 0; // Add a loop counter here
+    if (result.contains("data")) {
+        for (const auto& entry : result["data"]) {
+            if (entry.contains("b64_json")) {
+                string image_data_base64 = entry["b64_json"];
+                auto binary_data = cppcodec::base64_rfc4648::decode(image_data_base64);
 
-        string file_name = save_dir + "/image_" + util::get_formatted_time() + ".png";
-        ofstream image_file(file_name, ios::binary);
-        image_file.write(reinterpret_cast<const char*>(binary_data.data()), binary_data.size());
-        image_file.close();
+                // Modify the file name to include the loop counter
+                string file_name = save_dir + "/image_" + util::get_formatted_time() + "_" + to_string(counter) + ".png";
+                ofstream image_file(file_name, ios::binary);
+                image_file.write(reinterpret_cast<const char*>(binary_data.data()), binary_data.size());
+                image_file.close();
 
-        filenames.push_back(file_name);
+                filenames.push_back(file_name);
+                counter++; // Increment the loop counter
+            }
+        }
     }
     return join(filenames, ", ");
 }

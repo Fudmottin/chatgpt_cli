@@ -25,6 +25,8 @@ public:
     void set_frequency_penalty(float penalty);
     void set_max_tokens(int tok);
 
+    string get_api_key() const;
+
 protected:
     cpr::Session client;
     string api_key;
