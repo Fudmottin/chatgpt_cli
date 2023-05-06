@@ -6,7 +6,7 @@ using json = nlohmann::json;
 
 OpenAIClient::OpenAIClient(const string& api_key)
 	: client(), api_key(api_key), api_base_url(string("https://api.openai.com/")),
-          temperature(0.5), max_tokens(0), presence_penalty(0.0),
+          temperature(1.0), max_tokens(0), presence_penalty(0.0),
           frequency_penalty(0.0), conversation_history() {
     client.SetHeader(cpr::Header{
         {"Authorization", "Bearer " + api_key},

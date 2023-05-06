@@ -42,7 +42,7 @@ string ChatClient::send_message(const string& message) {
         conversation_history.push_back(string("user: " + message + "\n"));
         conversation_history.push_back(string("AI: " + chat_response + "\n"));
 
-	return string("\nAssistent: " + chat_response + "\n");
+	return string("\nAssistant: " + chat_response + "\n");
 }
 
 json ChatClient::send_request(const json& request_data) {

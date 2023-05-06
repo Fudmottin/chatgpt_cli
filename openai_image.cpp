@@ -38,7 +38,17 @@ string OpenAIImage::send_message(const string& message) {
         return filenames;
     } else {
         cerr << "Error: Request failed with status code " << response.status_code << endl;
-        return "";
+
+        try {
+            json error_json = json::parse(response.text);
+            string error_message = error_json["error"]["message"];
+
+            cerr << "Error details: " << error_message << endl << endl;
+            return "";
+        } catch (const exception& e) {
+            cerr << "Error parsing the error message: " << e.what() << endl;
+            return response.text;
+        }
     }
 }
 
