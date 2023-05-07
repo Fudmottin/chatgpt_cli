@@ -13,6 +13,7 @@ string get_api_key();
 string get_chatgpt_cli_dir();
 string get_formatted_time();
 string trim_content(const string& content, size_t max_length);
+string remove_quotes(const std::string& input);
 void save_history_to_file(History *hist);
 void load_history_from_file(History *hist);
 

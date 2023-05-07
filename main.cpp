@@ -14,6 +14,8 @@
 using namespace std;
 using CommandHandler = void(*)(OpenAIClient&, const vector<string>&);
 
+void handle_command(const string& command, OpenAIClient& ai_client);
+
 // Hidious global varialbes
 static map<string, CommandHandler> command_map;
 static EditLine *el = 0;
@@ -68,6 +70,39 @@ void make_image_command(OpenAIClient& ai_client, const vector<string>& parts) {
     }
 }
 
+void prompt_image_command(OpenAIClient& ai_client, const vector<string>& parts) {
+    if (parts.size() < 2) {
+        cout << "Usage: /prompt-image image prompt" << endl;
+        return;
+    }
+
+    string image_prompt;
+    for (size_t i = 1; i < parts.size(); ++i) {
+        image_prompt += parts[i];
+        if (i < parts.size() - 1) {
+            image_prompt += " ";
+        }
+    }
+
+    image_prompt += " Create a prompt for DALL-E that is fewer than 1000 characters.";
+
+    string input = ai_client.send_message(image_prompt);
+    size_t colonPos = input.find(':');
+
+    if (colonPos != std::string::npos) {
+        string trimmed = input.substr(colonPos + 1);
+        trimmed.erase(0, trimmed.find_first_not_of(" "));
+        input = trimmed;
+    }
+
+    input = util::remove_quotes(input);
+
+    cout << "\nCalling /make-image " + input << endl;
+
+    string new_prompt = "/make-image " + input;
+    handle_command(new_prompt, ai_client);
+}
+
 // Add more command functions here
 
 void register_commands() {
@@ -75,6 +110,7 @@ void register_commands() {
     command_map["exit"] = quit_command;
     command_map["set-chatgpt-temperature"] = set_temperature;
     command_map["make-image"] = make_image_command;
+    command_map["prompt-image"] = prompt_image_command;
     // Register more commands here
 }
 

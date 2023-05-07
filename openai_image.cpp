@@ -13,13 +13,14 @@ void OpenAIImage::set_image_size(const string& size) {
 }
 
 string OpenAIImage::send_message(const string& message) {
+    string prompt = message.substr(0, 1000);
     if (message.length() > 1000) {
         cerr << "Error: Message length exceeds 1000 characters." << endl;
-        return "";
+        cerr << "Using prompt, \"" << prompt << "\" instead." << endl;
     }
 
     json payload = {
-        {"prompt", message},
+        {"prompt", prompt},
         {"n", 2},
         {"size", image_size},
         {"response_format", "b64_json"}
@@ -32,7 +33,7 @@ string OpenAIImage::send_message(const string& message) {
 
     if (response.status_code == 200) {
         auto result = json::parse(response.text);
-        conversation_history.push_back(message);
+        conversation_history.push_back(prompt);
         string filenames = process_result(result);
         conversation_history.push_back(filenames);
         return filenames;

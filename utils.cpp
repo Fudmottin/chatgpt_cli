@@ -56,6 +56,28 @@ void load_history_from_file(History *hist) {
     history_file.close();
 }
 
+string remove_quotes(const string &input) {
+    string result;
+    result.reserve(input.size());
+
+    for (size_t i = 0; i < input.size(); i++) {
+        if (input[i] == '\\') {
+            if (i + 1 < input.size() && input[i + 1] == '"') {
+                // Escaped quote, ignore both characters
+                i++;
+            } else {
+                // Keep the backslash character
+                result.push_back(input[i]);
+            }
+        } else if (input[i] != '"') {
+            // Keep the non-quote character
+            result.push_back(input[i]);
+        }
+    }
+
+    return result;
+}
+
 string trim_content(const string& content, size_t max_words) {
     string modified_content = content;
 
