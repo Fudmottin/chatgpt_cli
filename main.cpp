@@ -185,8 +185,18 @@ int main(int argc, char *argv[]) {
 		}
 	     }
 	}
+	catch (const runtime_error& e) { 
+            cerr << "Caught runtime  error: " << e.what() << endl;
+	    multi_line_input.clear();
+	    continue;
+        }
+	catch (const exception& e) {
+            cerr << "Caught an error: " << e.what() << endl;
+	    multi_line_input.clear();
+	    continue;
+	}
 	catch (...) {
-	    cout << "Unhandled exception. Sorry. Quitting as gracefully as I can.\n";
+	    cerr << "Unknown exception. Sorry. Quitting as gracefully as I can.\n";
             break;
 	}
     }
