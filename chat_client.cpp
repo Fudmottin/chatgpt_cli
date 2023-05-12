@@ -59,8 +59,10 @@ json ChatClient::send_request(const json& request_data) {
         context = conversation_history;
     }
 
-    for (size_t i = 0; i < context.size(); ++i) {
-        context[i] = util::trim_content(context[i], max_words);
+    if (context.size() > 3) {
+        for (size_t i = 0; i < context.size() - 2; i++) {
+            context[i] = util::trim_content(context[i], max_words);
+        }
     }
 
     string content = request_data["messages"][0]["content"].get<string>();
