@@ -83,13 +83,13 @@ json ChatClient::send_request(const json& request_data) {
 
     auto body = updated_request_data.dump();
 
-    cout << "\n" << body << endl;
+    // cout << "\n" << body << endl;
 
     client.SetBody(cpr::Body{body});
 
     auto response = client.Post();
     
-    cout << "\n" << response.text << endl;
+    // cout << "\n" << response.text << endl;
 
     if (response.status_code != 200) {
         cerr << "Error: " << response.status_code << " " << response.error.message << endl;
