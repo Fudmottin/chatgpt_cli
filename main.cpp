@@ -35,10 +35,32 @@ void quit_command(OpenAIClient& ai_client, const vector<string>& parts) {
     exit(0);
 }
 
-void set_temperature(OpenAIClient& ai_client, const vector<string>& parts) {
+void set_temperature_command(OpenAIClient& ai_client, const vector<string>& parts) {
     try {
         float argument_value = stof(parts[1]);
         ai_client.set_temperature(argument_value);
+    } catch (const std::invalid_argument& e) {
+        cout << "Invalid temperature value. Please provide a valid number." << endl;
+    } catch (const std::out_of_range& e) {
+        cout << "Temperature value out of range. Please provide a valid number within the acceptable range." << endl;
+    }
+}
+
+void set_presence_penalty_command(OpenAIClient& ai_client, const vector<string>& parts) {
+    try {
+        float argument_value = stof(parts[1]);
+        ai_client.set_presence_penalty(argument_value);
+    } catch (const std::invalid_argument& e) {
+        cout << "Invalid temperature value. Please provide a valid number." << endl;
+    } catch (const std::out_of_range& e) {
+        cout << "Temperature value out of range. Please provide a valid number within the acceptable range." << endl;
+    }
+}
+
+void set_frequency_penalty_command(OpenAIClient& ai_client, const vector<string>& parts) {
+    try {
+        float argument_value = stof(parts[1]);
+        ai_client.set_frequency_penalty(argument_value);
     } catch (const std::invalid_argument& e) {
         cout << "Invalid temperature value. Please provide a valid number." << endl;
     } catch (const std::out_of_range& e) {
@@ -108,7 +130,9 @@ void prompt_image_command(OpenAIClient& ai_client, const vector<string>& parts) 
 void register_commands() {
     command_map["quit"] = quit_command;
     command_map["exit"] = quit_command;
-    command_map["set-chatgpt-temperature"] = set_temperature;
+    command_map["set-temperature"] = set_temperature_command;
+    command_map["set-presence-penalty"] = set_presence_penalty_command;
+    command_map["set-frequency-penalty"] = set_frequency_penalty_command;
     command_map["make-image"] = make_image_command;
     command_map["prompt-image"] = prompt_image_command;
     // Register more commands here
