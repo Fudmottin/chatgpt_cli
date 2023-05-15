@@ -6,8 +6,9 @@
 #include <sstream>
 #include <string>
 #include <histedit.h>
-#include "utils.h"
 #include <algorithm>
+#include <map>
+#include "utils.h"
 #include "chat_client.h"
 #include "openai_image.h"
 
@@ -21,51 +22,42 @@ static map<string, CommandHandler> command_map;
 static EditLine *el = 0;
 static History *hist = 0;
 
-void quit_command(OpenAIClient& ai_client, const vector<string>& parts) {
+void quit_command(OpenAIClient& ai_client, [[maybe_unused]] const vector<string>& parts) {
     cout << "Quitting program." << endl;
     string chatgpt_cli_dir = util::get_chatgpt_cli_dir();
     if (chatgpt_cli_dir != "") {
         string time_stamp = util::get_formatted_time();
-	string history_file = chatgpt_cli_dir + "/chatgpt_history_" +
-		time_stamp + ".txt";
-	if (ai_client.save_history(history_file)) cout << "History saved." << endl;
+        string history_file = chatgpt_cli_dir + "/chatgpt_history_" +
+        time_stamp + ".txt";
+        if (ai_client.save_history(history_file)) cout << "History saved." << endl;
     }
     // Clear the input buffer before exiting
     cin.ignore(numeric_limits<streamsize>::max(), '\n');
     exit(0);
 }
 
-void set_temperature_command(OpenAIClient& ai_client, const vector<string>& parts) {
+template <typename Func>
+void set_command(OpenAIClient& ai_client, const vector<string>& parts, Func&& setFunc, const string& parameter_name) {
     try {
         float argument_value = stof(parts[1]);
-        ai_client.set_temperature(argument_value);
+        (ai_client.*setFunc)(argument_value);
     } catch (const std::invalid_argument& e) {
-        cout << "Invalid temperature value. Please provide a valid number." << endl;
+        cout << "Invalid " << parameter_name << " value. Please provide a valid number." << endl;
     } catch (const std::out_of_range& e) {
-        cout << "Temperature value out of range. Please provide a valid number within the acceptable range." << endl;
+        cout << parameter_name << " value out of range. Please provide a valid number within the acceptable range." << endl;
     }
+}
+
+void set_temperature_command(OpenAIClient& ai_client, const vector<string>& parts) {
+    set_command(ai_client, parts, &OpenAIClient::set_temperature, "temperature");
 }
 
 void set_presence_penalty_command(OpenAIClient& ai_client, const vector<string>& parts) {
-    try {
-        float argument_value = stof(parts[1]);
-        ai_client.set_presence_penalty(argument_value);
-    } catch (const std::invalid_argument& e) {
-        cout << "Invalid temperature value. Please provide a valid number." << endl;
-    } catch (const std::out_of_range& e) {
-        cout << "Temperature value out of range. Please provide a valid number within the acceptable range." << endl;
-    }
+    set_command(ai_client, parts, &OpenAIClient::set_presence_penalty, "presence penalty");
 }
 
 void set_frequency_penalty_command(OpenAIClient& ai_client, const vector<string>& parts) {
-    try {
-        float argument_value = stof(parts[1]);
-        ai_client.set_frequency_penalty(argument_value);
-    } catch (const std::invalid_argument& e) {
-        cout << "Invalid temperature value. Please provide a valid number." << endl;
-    } catch (const std::out_of_range& e) {
-        cout << "Temperature value out of range. Please provide a valid number within the acceptable range." << endl;
-    }
+    set_command(ai_client, parts, &OpenAIClient::set_frequency_penalty, "frequency penalty");
 }
 
 void make_image_command(OpenAIClient& ai_client, const vector<string>& parts) {
@@ -149,7 +141,7 @@ void handle_command(const string& command, OpenAIClient& ai_client) {
 
     // Convert the command to lowercase for case-insensitivity
     transform(trimmed_command.begin(), trimmed_command.end(), trimmed_command.begin(),
-        [](unsigned char c){ return tolower(c); });
+              [](unsigned char c){ return tolower(c); });
 
     // Remove leading "/" character if it exists
     if (trimmed_command[0] == '/') {
@@ -169,7 +161,7 @@ void handle_command(const string& command, OpenAIClient& ai_client) {
         if (cmd_handler != command_map.end()) {
             cmd_handler->second(ai_client, parts);
         } else {
-	    cout << "Command: " << parts[0] << " not recognized. Ignored.\n";
+            cout << "Command: " << parts[0] << " not recognized. Ignored.\n";
         }
     }
 }
@@ -227,38 +219,45 @@ int main(int argc, char *argv[]) {
     int count;
     const char *line;
     string multi_line_input;
+    string last_command;
     while ((line = el_gets(el, &count)) != nullptr) {
-	try {
-    	    if (count > 1) {
-	        if (line[count - 2] == '\\') {
-		    multi_line_input.append(line, count -2);
-	        } else {
-		    multi_line_input.append(line);
-		    if (!multi_line_input.empty() && multi_line_input.front() == '/') {
-			handle_command(multi_line_input, chatgpt);
-			history(hist, &ev, H_ENTER, multi_line_input.c_str());
-		    } else {
-		        history(hist, &ev, H_ENTER, multi_line_input.c_str());
-			cout << chatgpt.send_message(multi_line_input) << endl;
-		    }
-		    multi_line_input.clear();
-		}
-	     }
-	}
-	catch (const runtime_error& e) { 
-            cerr << "Caught runtime  error: " << e.what() << endl;
-	    multi_line_input.clear();
-	    continue;
+        try {
+            if (count > 1) {
+                if (line[count - 2] == '\\') {
+                    multi_line_input.append(line, count -2);
+                } else {
+                    multi_line_input.append(line);
+                    if (!multi_line_input.empty() && multi_line_input.front() == '/') {
+                        handle_command(multi_line_input, chatgpt);
+                        if (multi_line_input != last_command) {
+                            history(hist, &ev, H_ENTER, multi_line_input.c_str());
+                            last_command = multi_line_input;
+                        }
+                    } else {
+                        if (multi_line_input != last_command) {
+                            history(hist, &ev, H_ENTER, multi_line_input.c_str());
+                            last_command = multi_line_input;
+                        }
+                        cout << chatgpt.send_message(multi_line_input) << endl;
+                    }
+                    multi_line_input.clear();
+                }
+            }
         }
-	catch (const exception& e) {
+        catch (const runtime_error& e) { 
+            cerr << "Caught runtime  error: " << e.what() << endl;
+            multi_line_input.clear();
+            continue;
+        }
+        catch (const exception& e) {
             cerr << "Caught an error: " << e.what() << endl;
-	    multi_line_input.clear();
-	    continue;
-	}
-	catch (...) {
-	    cerr << "Unknown exception. Sorry. Quitting as gracefully as I can.\n";
+            multi_line_input.clear();
+            continue;
+        }
+        catch (...) {
+            cerr << "Unknown exception. Sorry. Quitting as gracefully as I can.\n";
             break;
-	}
+        }
     }
 
     return 0;

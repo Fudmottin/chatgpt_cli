@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <vector>
 #include <sstream>
 #include <algorithm>
 #include <unistd.h>
@@ -24,7 +25,7 @@ float clamp(float val, float lower, float upper) {
 }
 
 void save_history_to_file(History *hist) {
-    ofstream history_file(util::history_filename, ios::app);
+    ofstream history_file(util::history_filename, ios::out);
 
     if (!history_file.is_open()) {
         cerr << "Failed to open history file for writing." << endl;
@@ -34,7 +35,7 @@ void save_history_to_file(History *hist) {
     HistEvent ev;
     history(hist, &ev, H_FIRST);
     do {
-        history_file << ev.str << endl;
+        history_file << ev.str;
     } while (history(hist, &ev, H_NEXT) == 0);
 
     history_file.close();
@@ -49,7 +50,13 @@ void load_history_from_file(History *hist) {
 
     HistEvent ev;
     string line;
+    vector<string> lines;
     while (getline(history_file, line)) {
+        lines.push_back(line);
+    }
+
+    reverse(lines.begin(), lines.end());
+    for (const auto& line : lines) {
         history(hist, &ev, H_ENTER, line.c_str());
     }
 

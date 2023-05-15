@@ -40,7 +40,7 @@ string ChatClient::send_message(const string& message) {
         auto chat_response = extract_response(response);
 
         conversation_history.push_back(string("user: " + message + "\n"));
-        conversation_history.push_back(string("AI: " + chat_response + "\n"));
+        conversation_history.push_back(string("AI: " + chat_response + "\n\n"));
 
 	return string("\nAssistant: " + chat_response + "\n");
 }
