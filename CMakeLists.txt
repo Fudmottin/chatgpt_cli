@@ -11,6 +11,7 @@ find_package(nlohmann_json REQUIRED)
 set(CPR_INCLUDE_DIRS "/usr/local/include")
 set(CPR_LIBRARIES "/usr/local/lib/libcpr.a")
 set(CPPCODEC_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/cppcodec)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 find_package(Curses REQUIRED)
 find_package(Editline REQUIRED)
 

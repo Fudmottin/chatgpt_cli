@@ -22,7 +22,8 @@ static EditLine *el = 0;
 static History *hist = 0;
 
 template <typename Func>
-void set_command(OpenAIClient& ai_client, const vector<string>& parts, Func&& setFunc, const string& parameter_name) {
+void set_command(OpenAIClient& ai_client, const vector<string>& parts,
+        Func&& setFunc, const string& parameter_name) {
     try {
         float argument_value = stof(parts[1]);
         (ai_client.*setFunc)(argument_value);
@@ -50,9 +51,9 @@ void quit_command(OpenAIClient& ai_client, const vector<string>& parts) {
     string chatgpt_cli_dir = util::get_chatgpt_cli_dir();
     if (chatgpt_cli_dir != "") {
         string time_stamp = util::get_formatted_time();
-	string history_file = chatgpt_cli_dir + "/chatgpt_history_" +
-		time_stamp + ".txt";
-	if (ai_client.save_history(history_file)) cout << "History saved." << endl;
+        string history_file = chatgpt_cli_dir + "/chatgpt_history_" +
+            time_stamp + ".txt";
+        if (ai_client.save_history(history_file)) cout << "History saved." << endl;
     }
     // Clear the input buffer before exiting
     cin.ignore(numeric_limits<streamsize>::max(), '\n');
@@ -140,7 +141,7 @@ void handle_command(const string& command, OpenAIClient& ai_client) {
 
     // Convert the command to lowercase for case-insensitivity
     transform(trimmed_command.begin(), trimmed_command.end(), trimmed_command.begin(),
-        [](unsigned char c){ return tolower(c); });
+            [](unsigned char c){ return tolower(c); });
 
     // Remove leading "/" character if it exists
     if (trimmed_command[0] == '/') {
@@ -160,7 +161,7 @@ void handle_command(const string& command, OpenAIClient& ai_client) {
         if (cmd_handler != command_map.end()) {
             cmd_handler->second(ai_client, parts);
         } else {
-	    cout << "Command: " << parts[0] << " not recognized. Ignored.\n";
+            cout << "Command: " << parts[0] << " not recognized. Ignored.\n";
         }
     }
 }
