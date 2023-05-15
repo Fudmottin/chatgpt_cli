@@ -21,6 +21,30 @@ static map<string, CommandHandler> command_map;
 static EditLine *el = 0;
 static History *hist = 0;
 
+template <typename Func>
+void set_command(OpenAIClient& ai_client, const vector<string>& parts, Func&& setFunc, const string& parameter_name) {
+    try {
+        float argument_value = stof(parts[1]);
+        (ai_client.*setFunc)(argument_value);
+    } catch (const std::invalid_argument& e) {
+        cout << "Invalid " << parameter_name << " value. Please provide a valid number." << endl;
+    } catch (const std::out_of_range& e) {
+        cout << parameter_name << " value out of range. Please provide a valid number within the acceptable range." << endl;
+    }
+}
+
+void set_temperature_command(OpenAIClient& ai_client, const vector<string>& parts) {
+    set_command(ai_client, parts, &OpenAIClient::set_temperature, "temperature");
+}
+
+void set_presence_penalty_command(OpenAIClient& ai_client, const vector<string>& parts) {
+    set_command(ai_client, parts, &OpenAIClient::set_presence_penalty, "presence penalty");
+}
+
+void set_frequency_penalty_command(OpenAIClient& ai_client, const vector<string>& parts) {
+    set_command(ai_client, parts, &OpenAIClient::set_frequency_penalty, "frequency penalty");
+}
+
 void quit_command(OpenAIClient& ai_client, const vector<string>& parts) {
     cout << "Quitting program." << endl;
     string chatgpt_cli_dir = util::get_chatgpt_cli_dir();
@@ -33,39 +57,6 @@ void quit_command(OpenAIClient& ai_client, const vector<string>& parts) {
     // Clear the input buffer before exiting
     cin.ignore(numeric_limits<streamsize>::max(), '\n');
     exit(0);
-}
-
-void set_temperature_command(OpenAIClient& ai_client, const vector<string>& parts) {
-    try {
-        float argument_value = stof(parts[1]);
-        ai_client.set_temperature(argument_value);
-    } catch (const std::invalid_argument& e) {
-        cout << "Invalid temperature value. Please provide a valid number." << endl;
-    } catch (const std::out_of_range& e) {
-        cout << "Temperature value out of range. Please provide a valid number within the acceptable range." << endl;
-    }
-}
-
-void set_presence_penalty_command(OpenAIClient& ai_client, const vector<string>& parts) {
-    try {
-        float argument_value = stof(parts[1]);
-        ai_client.set_presence_penalty(argument_value);
-    } catch (const std::invalid_argument& e) {
-        cout << "Invalid temperature value. Please provide a valid number." << endl;
-    } catch (const std::out_of_range& e) {
-        cout << "Temperature value out of range. Please provide a valid number within the acceptable range." << endl;
-    }
-}
-
-void set_frequency_penalty_command(OpenAIClient& ai_client, const vector<string>& parts) {
-    try {
-        float argument_value = stof(parts[1]);
-        ai_client.set_frequency_penalty(argument_value);
-    } catch (const std::invalid_argument& e) {
-        cout << "Invalid temperature value. Please provide a valid number." << endl;
-    } catch (const std::out_of_range& e) {
-        cout << "Temperature value out of range. Please provide a valid number within the acceptable range." << endl;
-    }
 }
 
 void make_image_command(OpenAIClient& ai_client, const vector<string>& parts) {
@@ -228,37 +219,28 @@ int main(int argc, char *argv[]) {
     const char *line;
     string multi_line_input;
     while ((line = el_gets(el, &count)) != nullptr) {
-	try {
-    	    if (count > 1) {
-	        if (line[count - 2] == '\\') {
-		    multi_line_input.append(line, count -2);
-	        } else {
-		    multi_line_input.append(line);
-		    if (!multi_line_input.empty() && multi_line_input.front() == '/') {
-			handle_command(multi_line_input, chatgpt);
-			history(hist, &ev, H_ENTER, multi_line_input.c_str());
-		    } else {
-		        history(hist, &ev, H_ENTER, multi_line_input.c_str());
-			cout << chatgpt.send_message(multi_line_input) << endl;
-		    }
-		    multi_line_input.clear();
-		}
-	     }
-	}
-	catch (const runtime_error& e) { 
-            cerr << "Caught runtime  error: " << e.what() << endl;
-	    multi_line_input.clear();
-	    continue;
+        try {
+            if (count > 1) {
+                if (line[count - 2] == '\\') {
+                    multi_line_input.append(line, count -2);
+                } else {
+                    multi_line_input.append(line);
+                    if (!multi_line_input.empty() && multi_line_input.front() == '/') {
+                        handle_command(multi_line_input, chatgpt);
+                        history(hist, &ev, H_ENTER, multi_line_input.c_str());
+                    } else {
+                        history(hist, &ev, H_ENTER, multi_line_input.c_str());
+                        cout << chatgpt.send_message(multi_line_input) << endl;
+                    }
+                    multi_line_input.clear();
+                }
+            }
         }
-	catch (const exception& e) {
+        catch (const exception& e) {
             cerr << "Caught an error: " << e.what() << endl;
-	    multi_line_input.clear();
-	    continue;
-	}
-	catch (...) {
-	    cerr << "Unknown exception. Sorry. Quitting as gracefully as I can.\n";
-            break;
-	}
+            multi_line_input.clear();
+            continue;
+        }
     }
 
     return 0;
