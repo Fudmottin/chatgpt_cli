@@ -188,7 +188,6 @@ int main(int argc, char *argv[]) {
     // Register the cleanup function to be called when the program exits
     atexit(cleanup);
 
-
     // Initialize the EditLine and History objects
     el = el_init(argv[0], stdin, stdout, stderr);
     if (!el) {
@@ -219,22 +218,37 @@ int main(int argc, char *argv[]) {
     int count;
     const char *line;
     string multi_line_input;
+
     while ((line = el_gets(el, &count)) != nullptr) {
         try {
             if (count > 1) {
-                if (line[count - 2] == '\\') {
-                    multi_line_input.append(line, count -2);
-                } else {
-                    multi_line_input.append(line);
-                    if (!multi_line_input.empty() && multi_line_input.front() == '/') {
-                        handle_command(multi_line_input, chatgpt);
-                        history(hist, &ev, H_ENTER, multi_line_input.c_str());
-                    } else {
-                        history(hist, &ev, H_ENTER, multi_line_input.c_str());
-                        cout << chatgpt.send_message(multi_line_input) << endl;
-                    }
-                    multi_line_input.clear();
+                // Check if it's a command
+                if (line[0] == '/') {
+                    handle_command(line, chatgpt);
+                    history(hist, &ev, H_ENTER, line);
+                    continue;
                 }
+
+                // Check for end of input signal
+                if (line[0] == '.' && line[1] == '\n') {
+                    // Remove trailing newline
+                    if (!multi_line_input.empty() && multi_line_input.back() == '\n') {
+                        multi_line_input.pop_back();
+                    }
+
+                    // Process the input
+                    history(hist, &ev, H_ENTER, multi_line_input.c_str());
+                    cout << "\nAssistant: " << chatgpt.send_message(multi_line_input) << endl;
+                    multi_line_input.clear();
+                    continue;
+                }
+
+                // Skip blank lines
+                if (count == 2 && line[0] == '\n') {
+                    continue;
+                }
+                // Add line to multi_line_input
+                multi_line_input.append(line);
             }
         }
         catch (const exception& e) {

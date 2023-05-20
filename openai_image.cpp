@@ -21,7 +21,7 @@ string OpenAIImage::send_message(const string& message) {
 
     json payload = {
         {"prompt", prompt},
-        {"n", 2},
+        {"n", 1},
         {"size", image_size},
         {"response_format", "b64_json"}
     };

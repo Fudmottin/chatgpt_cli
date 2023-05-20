@@ -42,7 +42,7 @@ string ChatClient::send_message(const string& message) {
         conversation_history.push_back(string("user: " + message + "\n"));
         conversation_history.push_back(string("AI: " + chat_response + "\n\n"));
 
-	return string("\nAssistant: " + chat_response + "\n");
+	return string(chat_response + "\n");
 }
 
 json ChatClient::send_request(const json& request_data) {
@@ -86,6 +86,7 @@ json ChatClient::send_request(const json& request_data) {
     // cout << "\n" << body << endl;
 
     client.SetBody(cpr::Body{body});
+    client.SetTimeout(1200000);
 
     auto response = client.Post();
     
