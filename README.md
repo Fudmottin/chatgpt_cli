@@ -34,8 +34,11 @@ or representations of any kind, express or implied.
 ## Building
 
 mkdir build && cd build
+
 cmake ..
+
 make
+
 
 Hopefully that will work. I've been using macOS for development. There are a couple brew
 packages you need. One is cpr. This does the HTTPS request handling. The other is
@@ -51,3 +54,28 @@ command processing is desired. You type quit to quit. Or you can do CTRL-C. Inte
 other models is also on the TODO list.
 
 Windows users are on their own. The code is pretty standard C++ stuff.
+
+## Running
+
+I don't have documentation or help yet. To quit, enter /quit or /exit at the prompt
+by itself.
+
+Thanks to accidentally hiting the return key, I've made it so to send your prompt
+to OpenAI, you need to enter a . on a line by itself like so:
+
+>.
+
+You can use the /make-image command to prompt DALL-E to make an image for you.
+
+You can have GPT create a prompt and automatically send it to DALL-E by using
+/prompt-image and using some prompt text.
+
+GPT will generate a prompt and then pass it on to /make-image automatically.
+
+/set-temperature, /set-presence-penalty, and /set-frequency-penalty coommands are suppported so you can change the behavior of GPT in mid chat. A clamp function is used
+to keep arguments in valid range. Temperature is 0.0 - 2.0. The others are -2.0 to 2.0.
+it is important to know that increasing temperature increased time. I've got a hard coded two minute time out at the moment.
+
+Have fun with it!
+
+
