@@ -1,3 +1,5 @@
+// chatgpt_cli openai_client.h
+
 #pragma once
 
 #include <string>
@@ -38,3 +40,4 @@ protected:
     int max_tokens;
     vector<string> conversation_history;
 };
+

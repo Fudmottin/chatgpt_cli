@@ -1,3 +1,5 @@
+// chatgpt_cli utils.h
+
 #pragma once
 
 #include <editline/readline.h>
@@ -19,3 +21,4 @@ void load_history_from_file(History *hist);
 
 extern string history_filename;
 }
+

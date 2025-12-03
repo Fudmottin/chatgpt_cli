@@ -1,5 +1,3 @@
-README.md:
-
 # chatgpt_cli
 
 OpenAI-powered command-line interface for chatbot conversations.
@@ -33,12 +31,11 @@ or representations of any kind, express or implied.
 
 ## Building
 
+```bash
 mkdir build && cd build
-
 cmake ..
-
 make
-
+```
 
 Hopefully that will work. I've been using macOS for development. There are a couple brew
 packages you need. One is cpr. This does the HTTPS request handling. The other is
@@ -72,11 +69,13 @@ You can have GPT create a prompt and automatically send it to DALL-E by using
 
 GPT will generate a prompt and then pass it on to /make-image automatically.
 
-/set-temperature, /set-presence-penalty, and /set-frequency-penalty commands are suppported so you can change the behavior of GPT in mid chat. A clamp function is used
+/set-temperature, /set-presence-penalty, and /set-frequency-penalty commands
+are suppported so you can change the behavior of GPT in mid chat. A clamp function is used
 to keep arguments in valid range. Temperature is 0.0 - 2.0. The others are -2.0 to 2.0.
-it is important to know that increasing temperature increased time. I've got a hard coded two minute time out at the moment.
+it is important to know that increasing temperature increased time.
+I've got a hard coded two minute time out at the moment.
 
-chatgpt_cli will create a ~/.chatgpt_cli directory if it doesn't exist. The history file
+chatgpt_cli will create a ~/.config/chatgpt_cli directory if it doesn't exist. The history file
 contains comands and text that you've entered. Transcripts of conversations are also
 saved in that directory as are images.
 

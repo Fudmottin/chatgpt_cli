@@ -1,6 +1,8 @@
+// chatgpt_cli openai_image.cpp
+
 #include "openai_image.h"
 #include "utils.h"
-#include <cppcodec/base64_rfc4648.hpp> // Add this include
+#include <cppcodec/base64_rfc4648.hpp>
 
 OpenAIImage::OpenAIImage(const string& api_key)
     : OpenAIClient(api_key) {

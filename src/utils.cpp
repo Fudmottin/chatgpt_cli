@@ -1,3 +1,5 @@
+// chatgpt_cli utils.cpp
+
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -180,7 +182,7 @@ string get_api_key() {
 
 string get_chatgpt_cli_dir() {
     string home_dir = get_home_directory();
-    string chatgpt_cli_dir = home_dir.empty() ? "" : home_dir + "/.chatgpt_cli";
+    string chatgpt_cli_dir = home_dir.empty() ? "" : home_dir + "/.config/chatgpt_cli";
     if (!chatgpt_cli_dir.empty()) {
         struct stat st;
         if (stat(chatgpt_cli_dir.c_str(), &st) == -1) {
@@ -197,3 +199,4 @@ string get_chatgpt_cli_dir() {
 }
 
 } // namespace util
+
