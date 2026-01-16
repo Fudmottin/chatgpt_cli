@@ -1,4 +1,4 @@
-# chatgpt_cli
+# clanker
 
 OpenAI-powered command-line interface for chatbot conversations.
 
@@ -75,7 +75,7 @@ to keep arguments in valid range. Temperature is 0.0 - 2.0. The others are -2.0 
 it is important to know that increasing temperature increased time.
 I've got a hard coded two minute time out at the moment.
 
-chatgpt_cli will create a ~/.config/chatgpt_cli directory if it doesn't exist. The history file
+clanker will create a ~/.config/clanker directory if it doesn't exist. The history file
 contains comands and text that you've entered. Transcripts of conversations are also
 saved in that directory as are images.
 
