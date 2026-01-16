@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(chatgpt_cli)
+project(clanker)
 add_subdirectory(external/cppcodec)
 
 # Policy for Boost (no-op on older CMake versions)
@@ -30,7 +30,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 find_package(Curses REQUIRED)
 find_package(Editline REQUIRED)
 
-add_executable(chatgpt_cli
+add_executable(clanker
     src/main.cpp
     src/openai_client.cpp
     src/chat_client.cpp
@@ -38,6 +38,6 @@ add_executable(chatgpt_cli
     src/utils.cpp
 )
 
-target_include_directories(chatgpt_cli PRIVATE ${CPR_INCLUDE_DIRS} ${EDITLINE_INCLUDE_DIRS} ${CURSES_INCLUDE_DIRS} ${CPPCODEC_INCLUDE_DIR})
-target_link_libraries(chatgpt_cli PRIVATE -lcurl ${EDITLINE_LIBRARIES} ${CURSES_LIBRARIES} cppcodec)
+target_include_directories(clanker PRIVATE ${CPR_INCLUDE_DIRS} ${EDITLINE_INCLUDE_DIRS} ${CURSES_INCLUDE_DIRS} ${CPPCODEC_INCLUDE_DIR})
+target_link_libraries(clanker PRIVATE -lcurl ${EDITLINE_LIBRARIES} ${CURSES_LIBRARIES} cppcodec)
 
