@@ -1,0 +1,13 @@
+docs/
+├── overview.md
+├── architecture.md
+├── command-language.md
+├── builtin-commands.md
+├── special-commands.md
+├── llm-abstraction.md
+├── execution-model.md
+├── error-handling.md
+├── concurrency.md
+├── security-model.md
+└── coding-standards.md
+

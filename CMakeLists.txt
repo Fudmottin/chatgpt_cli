@@ -1,43 +1,44 @@
 cmake_minimum_required(VERSION 3.20)
-project(clanker)
-add_subdirectory(external/cppcodec)
-
-# Policy for Boost (no-op on older CMake versions)
-if(POLICY CMP0167)
-    cmake_policy(SET CMP0167 NEW)
-endif()
-
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake") # Add this line
+project(clanker LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Build type
-option(BUILD_DEBUG "Build with debug info" OFF)
-if(BUILD_DEBUG)
-    set(CMAKE_BUILD_TYPE Debug)
-else()
-    set(CMAKE_BUILD_TYPE Release)
-endif()
-
-# Boost.JSON
-find_package(Boost REQUIRED COMPONENTS json)
-
-set(CPR_INCLUDE_DIRS "/usr/local/include")
-set(CPR_LIBRARIES "/usr/local/lib/libcpr.a")
-set(CPPCODEC_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/cppcodec)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-find_package(Curses REQUIRED)
-find_package(Editline REQUIRED)
+option(CLANKER_WERROR "Treat warnings as errors" OFF)
 
 add_executable(clanker
     src/main.cpp
-    src/openai_client.cpp
-    src/chat_client.cpp
-    src/openai_image.cpp
-    src/utils.cpp
+
+    src/clanker/shell.cpp
+    src/clanker/line_editor.cpp
+    src/clanker/history.cpp
+    src/clanker/lexer.cpp
+    src/clanker/parser.cpp
+    src/clanker/executor.cpp
+    src/clanker/builtins.cpp
+    src/clanker/builtin_core.cpp
+    src/clanker/builtin_llm.cpp
+    src/clanker/process.cpp
+    src/clanker/signals.cpp
+    src/clanker/util.cpp
+
+    src/clanker_llm/registry.cpp
+    src/clanker_llm/backend_stub.cpp
+    src/clanker_llm/redact.cpp
 )
 
-target_include_directories(clanker PRIVATE ${CPR_INCLUDE_DIRS} ${EDITLINE_INCLUDE_DIRS} ${CURSES_INCLUDE_DIRS} ${CPPCODEC_INCLUDE_DIR})
-target_link_libraries(clanker PRIVATE -lcurl ${EDITLINE_LIBRARIES} ${CURSES_LIBRARIES} cppcodec)
+target_include_directories(clanker PRIVATE
+    src
+)
+
+target_compile_options(clanker PRIVATE
+    -Wall -Wextra -Wpedantic
+)
+
+if(CLANKER_WERROR)
+    target_compile_options(clanker PRIVATE -Werror)
+endif()
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 

@@ -1,0 +1,35 @@
+.
+├── CMakeLists.txt
+├── LICENSE
+├── LEGAL.txt
+├── README.md
+├── cmake/
+│   └── FindEditLine.cmake              # optional (only if you keep libedit)
+├── docs/                               # rename llm/ -> docs/
+│   ├── clanker-overview.md
+│   ├── architecture.md
+│   ├── command-language.md
+│   └── built-ins.md
+├── src/
+│   ├── main.cpp                        # tiny: parse args, start shell
+│   ├── clanker/
+│   │   ├── shell.cpp  shell.h          # REPL loop + ShellState
+│   │   ├── line_editor.cpp  line_editor.h
+│   │   ├── history.cpp  history.h
+│   │   ├── lexer.cpp  lexer.h
+│   │   ├── parser.cpp  parser.h
+│   │   ├── ast.h
+│   │   ├── executor.cpp  executor.h
+│   │   ├── builtins.cpp  builtins.h    # registry + common helpers
+│   │   ├── builtin_core.cpp            # exit/cd/pwd/help/type
+│   │   ├── builtin_llm.cpp             # prompt/ask/use/models/context/last/save
+│   │   ├── process.cpp  process.h      # spawn/exec + pipes
+│   │   ├── signals.cpp  signals.h
+│   │   └── util.cpp  util.h
+│   └── clanker_llm/
+│       ├── model.h                     # interfaces + request/response types
+│       ├── registry.cpp  registry.h
+│       ├── backend_stub.cpp  backend_stub.h
+│       └── redact.cpp  redact.h         # avoid secrets in history/logs
+└── external/                            # aim to delete
+
