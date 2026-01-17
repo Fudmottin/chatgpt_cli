@@ -1,3 +1,5 @@
+// src/clanker/executor.cpp
+
 #include "clanker/executor.h"
 
 #include "clanker/process.h"
@@ -27,7 +29,7 @@ int Executor::run(const std::string& command) {
       return (*fn)(ctx, argv);
    }
 
-   return run_external(command);
+   return run_external_argv(argv);
 }
 
 } // namespace clanker
