@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.20)
 project(clanker LANGUAGES CXX)
 
+# Avoid inheriting user environment linker flags into the cache.
+# Users can still pass flags explicitly via CMake toolchain/presets if desired.
+set(CMAKE_EXE_LINKER_FLAGS "" CACHE STRING "" FORCE)
+set(CMAKE_SHARED_LINKER_FLAGS "" CACHE STRING "" FORCE)
+set(CMAKE_MODULE_LINKER_FLAGS "" CACHE STRING "" FORCE)
+
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
