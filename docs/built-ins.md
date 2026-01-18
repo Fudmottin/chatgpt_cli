@@ -18,6 +18,28 @@ required for the initial implementation.
 
 ---
 
+## Built-ins in Pipelines
+
+Built-ins shall be implemented as stream-oriented commands:
+* they read from stdin when applicable
+* they write normal output to stdout and diagnostics to stderr
+* they return an exit status
+
+This allows built-ins to appear in pipelines similarly to external commands.
+
+---
+
+## When to Prefer an External Command
+
+Prefer an external command when the command:
+* does not need to mutate shell state, and
+* is primarily a data transformer.
+
+Prefer a built-in when the command must mutate shell state or must be available
+without spawning a process.
+
+---
+
 ## Minimum viable built-ins (Phase 1)
 
 These are sufficient for a usable interactive shell and for orchestrating LLMs.

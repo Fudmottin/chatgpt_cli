@@ -228,3 +228,10 @@ documented before being enabled.
 * Execution distinguishes built-in commands from external commands
 * LLM commands are built-ins and follow the same execution path as other commands
 
+---
+
+## Scripting (Planned)
+
+clanker may support executing command files ("scripts") similar to `bash`.
+Scripting is not enabled until its semantics are fully specified.
+

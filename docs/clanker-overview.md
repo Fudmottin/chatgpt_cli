@@ -115,3 +115,17 @@ prompt "Write a C++ function to tokenize shell input."
 * Prefer C++23 language features where they improve clarity
 * Code should favor correctness and clarity over cleverness
 
+## Philosophy
+
+clanker is modeled after `bash`:
+* built-ins exist to mutate shell state (e.g. `cd`, `export`)
+* most functionality is provided by external commands that compose via stdin/stdout
+* pipelines are the primary composition mechanism
+
+## Agents and Security
+
+LLM/agent backends are treated as remote services:
+* clanker sends requests over HTTPS and receives JSON responses
+* agents do not execute local commands on behalf of clanker
+* clanker remains the authority for local execution and filesystem access
+

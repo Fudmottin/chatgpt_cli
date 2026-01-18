@@ -1,15 +1,17 @@
-## Current status
+# Status
 
-* Shell loop works
-* Built-ins: exit, cd, pwd, help, prompt/ask (stub)
-* External commands via posix_spawnp
-* No real lexer/AST yet (parser only checks completeness)
-* No pipelines yet
-* No line editing/history yet
+## Working
 
-## Next planned steps
+* REPL loop
+* Lexer + parser producing Pipeline AST
+* External pipelines work (posix_spawnp, pipe, dup2)
+* Built-ins: exit/cd/pwd/help + LLM stubs
+* Built-ins rejected inside pipelines (for now)
 
-1. Replace naive split with real lexer
-2. Introduce AST for simple commands + pipelines
-3. Pipe execution
+## Next
+
+1. Make built-ins pipeline-capable via stdin/stdout/stderr in BuiltinContext
+2. Add `type` builtin
+3. Add history + line editing layer (bash-like)
+4. Add `&&` / `||`
 

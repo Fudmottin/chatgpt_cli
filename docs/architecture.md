@@ -273,3 +273,19 @@ Focus: deterministic unit tests before integrating interactive I/O.
 
 ---
 
+## Command Execution Model
+
+A pipeline stage is either:
+* a built-in executed in-process, or
+* an external command executed as a child process.
+
+Both are wired through stdin/stdout/stderr so that built-ins can participate in
+pipelines wherever practical.
+
+## Trust Boundaries
+
+* External commands: local execution under the user account (traditional shell risk).
+* Agents/LLMs: remote HTTPS services exchanging JSON; they do not run local code.
+* clanker-managed filesystem operations may be restricted to a configured root.
+
+---
