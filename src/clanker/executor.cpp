@@ -1,7 +1,6 @@
 // src/clanker/executor.cpp
 
 #include <cerrno>
-#include <string>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <vector>
@@ -26,15 +25,23 @@ bool is_builtin(const Builtins& b, const SimpleCommand& st) {
 
 } // namespace
 
-Executor::Executor(Builtins builtins, std::filesystem::path root)
+Executor::Executor(Builtins builtins, std::filesystem::path root,
+                   std::filesystem::path* cwd, std::filesystem::path* oldpwd)
    : builtins_(std::move(builtins))
-   , root_(std::move(root)) {}
+   , root_(std::move(root))
+   , cwd_(cwd)
+   , oldpwd_(oldpwd) {}
 
 int Executor::run_simple(const SimpleCommand& cmd) {
    if (cmd.argv.empty()) return 0;
 
    if (auto fn = builtins_.find(cmd.argv.front())) {
-      BuiltinContext ctx{.root = root_};
+      BuiltinContext ctx{.root = root_,
+                         .in_fd = STDIN_FILENO,
+                         .out_fd = STDOUT_FILENO,
+                         .err_fd = STDERR_FILENO,
+                         .cwd = cwd_,
+                         .oldpwd = oldpwd_};
       return (*fn)(ctx, cmd.argv);
    }
 
@@ -43,7 +50,6 @@ int Executor::run_simple(const SimpleCommand& cmd) {
 
 int Executor::run_pipeline_builtin_first(const SimpleCommand& first,
                                          const Pipeline& pipeline) {
-   // pipeline.stages.size() >= 2 and first is builtin
    int pipefd[2] = {-1, -1};
    if (::pipe(pipefd) != 0) return 1;
 
@@ -70,7 +76,7 @@ int Executor::run_pipeline_builtin_first(const SimpleCommand& first,
       external.push_back(st.argv);
    }
 
-   // Spawn external pipeline WITHOUT waiting yet, with stdin = read_end.
+   // Spawn external pipeline (no wait yet), stdin=read_end.
    std::vector<pid_t> pids;
    pids.reserve(external.size());
 
@@ -114,13 +120,15 @@ int Executor::run_pipeline_builtin_first(const SimpleCommand& first,
 
    if (prev_read != -1) ::close(prev_read);
 
-   // Run builtin writing into pipe.
+   // Run builtin writing to pipe.
    int builtin_status = 0;
    if (auto fn = builtins_.find(first.argv.front())) {
       BuiltinContext ctx{.root = root_,
                          .in_fd = STDIN_FILENO,
                          .out_fd = write_end,
-                         .err_fd = STDERR_FILENO};
+                         .err_fd = STDERR_FILENO,
+                         .cwd = cwd_,
+                         .oldpwd = oldpwd_};
       builtin_status = (*fn)(ctx, first.argv);
    } else {
       builtin_status = 2;
@@ -128,7 +136,7 @@ int Executor::run_pipeline_builtin_first(const SimpleCommand& first,
 
    ::close(write_end); // deliver EOF to external pipeline
 
-   // Wait for external stages; return last stage status (bash default).
+   // Wait for externals; return last stage status (bash default).
    int last_exit = 0;
    for (std::size_t i = 0; i < pids.size(); ++i) {
       int status = 0;
@@ -154,7 +162,6 @@ int Executor::run_pipeline(const Pipeline& pipeline) {
    if (is_builtin(builtins_, first))
       return run_pipeline_builtin_first(first, pipeline);
 
-   // External-only pipeline
    std::vector<std::vector<std::string>> stages;
    stages.reserve(pipeline.stages.size());
    for (const auto& st : pipeline.stages) {

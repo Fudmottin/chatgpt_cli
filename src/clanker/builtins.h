@@ -16,11 +16,14 @@ namespace clanker {
 struct BuiltinContext {
    std::filesystem::path root;
 
-   // File descriptors for pipeline-capable builtins.
-   // Defaults inherit the shell's stdio.
-   int in_fd = 0;  // STDIN_FILENO
+   // Pipeline-capable I/O endpoints.
+   int in_fd =  0; // STDIN_FILENO
    int out_fd = 1; // STDOUT_FILENO
    int err_fd = 2; // STDERR_FILENO
+
+   // Shell state (bash-like). These are maintained by clanker, not the OS env.
+   std::filesystem::path* cwd = nullptr;    // current working directory
+   std::filesystem::path* oldpwd = nullptr; // previous working directory
 };
 
 using Argv = std::vector<std::string>;
