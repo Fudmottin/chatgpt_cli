@@ -58,13 +58,12 @@ int Shell::run() {
       }
 
       // Complete:
-      const std::string command = pr.logical_command;
       buffer.clear();
-
-      if (trim(command).empty())
+      
+      if (pr.pipeline.stages.empty())
          continue;
 
-      last_status = exec.run(command);
+      last_status = exec.run_pipeline(pr.pipeline);
    }
 }
 

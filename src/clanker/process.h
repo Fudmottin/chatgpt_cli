@@ -1,5 +1,4 @@
 // src/clanker/process.h
-
 #pragma once
 
 #include <string>
@@ -7,9 +6,14 @@
 
 namespace clanker {
 
-// Returns a bash-like exit status: 127 not found, 126 not executable, else
-// child status.
-int run_external_argv(const std::vector<std::string>& argv);
+// Spawn a single external program; connect stdin/stdout via fds.
+// Use -1 to mean "inherit".
+int spawn_external(const std::vector<std::string>& argv, int stdin_fd,
+                   int stdout_fd);
+
+// Run a pipeline of external programs.
+// Returns bash-like exit status of the last stage.
+int run_external_pipeline(const std::vector<std::vector<std::string>>& stages);
 
 } // namespace clanker
 

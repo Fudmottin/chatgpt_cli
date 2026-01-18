@@ -1,5 +1,4 @@
 // src/clanker/process.cpp
-
 #include <cerrno>
 #include <cstdlib>
 #include <spawn.h>
@@ -18,31 +17,102 @@ static int status_to_exit_code(int status) {
    return 1;
 }
 
-int run_external_argv(const std::vector<std::string>& argv) {
-   if (argv.empty()) return 0;
+static std::vector<char*> to_cargv(const std::vector<std::string>& argv) {
+   std::vector<char*> out;
+   out.reserve(argv.size() + 1);
+   for (const auto& s : argv) out.push_back(const_cast<char*>(s.c_str()));
+   out.push_back(nullptr);
+   return out;
+}
 
-   std::vector<char*> cargv;
-   cargv.reserve(argv.size() + 1);
-   for (const auto& s : argv) cargv.push_back(const_cast<char*>(s.c_str()));
-   cargv.push_back(nullptr);
+int spawn_external(const std::vector<std::string>& argv, int stdin_fd,
+                   int stdout_fd) {
+   if (argv.empty()) return -1;
+
+   posix_spawn_file_actions_t actions;
+   posix_spawn_file_actions_init(&actions);
+
+   if (stdin_fd != -1)
+      posix_spawn_file_actions_adddup2(&actions, stdin_fd, STDIN_FILENO);
+   if (stdout_fd != -1)
+      posix_spawn_file_actions_adddup2(&actions, stdout_fd, STDOUT_FILENO);
+
+   auto cargv = to_cargv(argv);
 
    pid_t pid{};
    const int rc =
-      posix_spawnp(&pid, cargv[0], nullptr, nullptr, cargv.data(), environ);
+      posix_spawnp(&pid, cargv[0], &actions, nullptr, cargv.data(), environ);
+
+   posix_spawn_file_actions_destroy(&actions);
+
    if (rc != 0) {
-      // posix_spawnp returns an errno value, not -1.
-      if (rc == ENOENT) return 127;
-      return 126;
+      // Return negative errno-like value so caller can decide policy.
+      return -rc;
    }
 
-   int status = 0;
-   for (;;) {
-      const pid_t w = waitpid(pid, &status, 0);
-      if (w == -1 && errno == EINTR) continue;
-      if (w == -1) return 1;
-      break;
+   return static_cast<int>(pid);
+}
+
+int run_external_pipeline(const std::vector<std::vector<std::string>>& stages) {
+   if (stages.empty()) return 0;
+
+   const std::size_t n = stages.size();
+   std::vector<pid_t> pids;
+   pids.reserve(n);
+
+   int prev_read = -1;
+
+   for (std::size_t i = 0; i < n; ++i) {
+      int pipefd[2] = {-1, -1};
+      const bool last = (i + 1 == n);
+
+      if (!last) {
+         if (::pipe(pipefd) != 0) {
+            if (prev_read != -1) ::close(prev_read);
+            return 1;
+         }
+      }
+
+      const int in_fd = prev_read;
+      const int out_fd = last ? -1 : pipefd[1];
+
+      const int pid_or_err = spawn_external(stages[i], in_fd, out_fd);
+
+      // Parent closes fds it no longer needs.
+      if (out_fd != -1) ::close(out_fd);
+      if (in_fd != -1) ::close(in_fd);
+
+      if (pid_or_err < 0) {
+         // spawn failed
+         if (!last) {
+            ::close(pipefd[0]);
+         }
+         // Map common failures roughly like shells do.
+         const int err = -pid_or_err;
+         if (err == ENOENT) return 127;
+         return 126;
+      }
+
+      pids.push_back(static_cast<pid_t>(pid_or_err));
+
+      prev_read = last ? -1 : pipefd[0];
    }
-   return status_to_exit_code(status);
+
+   if (prev_read != -1) ::close(prev_read);
+
+   int last_status = 0;
+   for (std::size_t i = 0; i < pids.size(); ++i) {
+      int status = 0;
+      for (;;) {
+         const pid_t w = ::waitpid(pids[i], &status, 0);
+         if (w == -1 && errno == EINTR) continue;
+         if (w == -1) status = 1;
+         break;
+      }
+      if (i + 1 == pids.size()) last_status = status_to_exit_code(status);
+   }
+
+   return last_status;
 }
 
 } // namespace clanker

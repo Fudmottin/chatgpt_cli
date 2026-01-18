@@ -1,73 +1,68 @@
+// src/clanker/parser.cpp
+#include "clanker/lexer.h"
 #include "clanker/parser.h"
-
-#include "clanker/util.h"
 
 namespace clanker {
 
-static bool is_escaped(const std::string& s, std::size_t i) {
-   // true if s[i] is preceded by an odd number of backslashes
-   std::size_t n = 0;
-   while (i > 0 && s[i - 1] == '\\') {
-      ++n;
-      --i;
-   }
-   return (n % 2) == 1;
-}
-
-bool Parser::has_unclosed_quotes(const std::string& s) {
-   bool in_single = false;
-   bool in_double = false;
-
-   for (std::size_t i = 0; i < s.size(); ++i) {
-      const char c = s[i];
-      if (c == '\'' && !in_double && !is_escaped(s, i))
-         in_single = !in_single;
-      else if (c == '"' && !in_single && !is_escaped(s, i))
-         in_double = !in_double;
-   }
-   return in_single || in_double;
-}
-
-bool Parser::ends_with_escaped_newline(const std::string& input) {
-   // Incomplete if the last *non-empty* line ends with an unescaped backslash.
-   auto lines = split_lines(input);
-   for (auto it = lines.rbegin(); it != lines.rend(); ++it) {
-      const auto t = rtrim(*it);
-      if (t.empty())
-         continue;
-      if (!t.empty() && t.back() == '\\') {
-         const std::size_t i = t.size() - 1;
-         return !is_escaped(t, i);
-      }
-      return false;
-   }
-   return false;
-}
-
-bool Parser::ends_with_dangling_operator(const std::string& s0) {
-   const auto s = rtrim(s0);
-   if (s.empty())
-      return false;
-
-   if (ends_with(s, "&&") || ends_with(s, "||"))
-      return true;
-
-   // dangling pipe if last non-space is '|'
-   return s.back() == '|';
+static bool is_trailing_control_operator(const LexResult& lr) {
+   if (lr.tokens.size() < 2) return false;
+   const auto& last = lr.tokens[lr.tokens.size() - 2];
+   return last.kind == TokenKind::Pipe || last.kind == TokenKind::AndIf ||
+          last.kind == TokenKind::OrIf;
 }
 
 ParseResult Parser::parse(const std::string& input) const {
-   // This is intentionally a minimal “completeness” parser.
-   // A real lexer/parser will replace it; keep the interface stable.
+   Lexer lx;
+   const LexResult lr = lx.lex(input);
 
-   if (has_unclosed_quotes(input) || ends_with_escaped_newline(input) ||
-       ends_with_dangling_operator(input)) {
+   switch (lr.kind) {
+   case LexKind::Incomplete:
       return {.kind = ParseKind::Incomplete};
+   case LexKind::Error:
+      return {.kind = ParseKind::Error, .message = lr.message};
+   case LexKind::Complete:
+      break;
    }
 
-   // For now, the “logical command” is just input with newlines preserved.
-   // Executor will treat it as a single command line (temporary).
-   return {.kind = ParseKind::Complete, .logical_command = input};
+   if (is_trailing_control_operator(lr)) return {.kind = ParseKind::Incomplete};
+
+   Pipeline pl;
+   pl.stages.push_back(SimpleCommand{});
+
+   for (const Token& t : lr.tokens) {
+      switch (t.kind) {
+      case TokenKind::Word:
+         pl.stages.back().argv.push_back(t.text);
+         break;
+
+      case TokenKind::Pipe:
+         // start next stage; stage must not be empty
+         if (pl.stages.back().argv.empty())
+            return {.kind = ParseKind::Error,
+                    .message = "empty pipeline stage"};
+         pl.stages.push_back(SimpleCommand{});
+         break;
+
+      case TokenKind::AndIf:
+      case TokenKind::OrIf:
+      case TokenKind::Ampersand:
+         return {.kind = ParseKind::Error,
+                 .message = "operators not implemented yet"};
+
+      case TokenKind::End:
+         break;
+      }
+   }
+
+   if (pl.stages.size() == 1 && pl.stages[0].argv.empty()) {
+      // empty input (or comment only)
+      return {.kind = ParseKind::Complete, .pipeline = Pipeline{}};
+   }
+
+   if (!pl.stages.empty() && pl.stages.back().argv.empty())
+      return {.kind = ParseKind::Error, .message = "empty pipeline stage"};
+
+   return {.kind = ParseKind::Complete, .pipeline = std::move(pl)};
 }
 
 } // namespace clanker
