@@ -1,9 +1,10 @@
 // src/clanker/process.cpp
+
 #include <cerrno>
-#include <cstdlib>
 #include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <vector>
 
 #include "clanker/process.h"
 
@@ -11,13 +12,15 @@ extern char** environ;
 
 namespace clanker {
 
-static int status_to_exit_code(int status) {
+namespace {
+
+int status_to_exit_code(int status) {
    if (WIFEXITED(status)) return WEXITSTATUS(status);
    if (WIFSIGNALED(status)) return 128 + WTERMSIG(status);
    return 1;
 }
 
-static std::vector<char*> to_cargv(const std::vector<std::string>& argv) {
+std::vector<char*> to_cargv(const std::vector<std::string>& argv) {
    std::vector<char*> out;
    out.reserve(argv.size() + 1);
    for (const auto& s : argv) out.push_back(const_cast<char*>(s.c_str()));
@@ -25,12 +28,19 @@ static std::vector<char*> to_cargv(const std::vector<std::string>& argv) {
    return out;
 }
 
+} // namespace
+
 int spawn_external(const std::vector<std::string>& argv, int stdin_fd,
-                   int stdout_fd) {
-   if (argv.empty()) return -1;
+                   int stdout_fd, const std::vector<int>& close_fds) {
+   if (argv.empty()) return -EINVAL;
 
    posix_spawn_file_actions_t actions;
    posix_spawn_file_actions_init(&actions);
+
+   // Close requested fds in the child (before exec).
+   for (int fd : close_fds) {
+      if (fd >= 0) posix_spawn_file_actions_addclose(&actions, fd);
+   }
 
    if (stdin_fd != -1)
       posix_spawn_file_actions_adddup2(&actions, stdin_fd, STDIN_FILENO);
@@ -46,7 +56,7 @@ int spawn_external(const std::vector<std::string>& argv, int stdin_fd,
    posix_spawn_file_actions_destroy(&actions);
 
    if (rc != 0) {
-      // Return negative errno-like value so caller can decide policy.
+      // Return negative errno-like value.
       return -rc;
    }
 
@@ -76,25 +86,20 @@ int run_external_pipeline(const std::vector<std::vector<std::string>>& stages) {
       const int in_fd = prev_read;
       const int out_fd = last ? -1 : pipefd[1];
 
-      const int pid_or_err = spawn_external(stages[i], in_fd, out_fd);
+      const int pid_or_err = spawn_external(stages[i], in_fd, out_fd, {});
 
-      // Parent closes fds it no longer needs.
       if (out_fd != -1) ::close(out_fd);
       if (in_fd != -1) ::close(in_fd);
 
       if (pid_or_err < 0) {
-         // spawn failed
-         if (!last) {
-            ::close(pipefd[0]);
-         }
-         // Map common failures roughly like shells do.
+         if (!last) ::close(pipefd[0]);
+
          const int err = -pid_or_err;
          if (err == ENOENT) return 127;
          return 126;
       }
 
       pids.push_back(static_cast<pid_t>(pid_or_err));
-
       prev_read = last ? -1 : pipefd[0];
    }
 

@@ -1,7 +1,11 @@
+// src/clanker/util.cpp
+
 #include "clanker/util.h"
 
 #include <cctype>
 #include <charconv>
+#include <cerrno>
+#include <unistd.h>
 
 namespace clanker {
 
@@ -68,6 +72,23 @@ std::optional<int> to_int(const std::string& s) {
    if (ec != std::errc{} || ptr != e)
       return std::nullopt;
    return v;
+}
+
+bool fd_write_all(int fd, std::string_view s) noexcept {
+   const char* p = s.data();
+   std::size_t n = s.size();
+
+   while (n > 0) {
+      const ssize_t w = ::write(fd, p, n);
+      if (w < 0) {
+         if (errno == EINTR)
+            continue;
+         return false;
+      }
+      p += static_cast<std::size_t>(w);
+      n -= static_cast<std::size_t>(w);
+   }
+   return true;
 }
 
 } // namespace clanker
