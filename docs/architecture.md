@@ -213,6 +213,18 @@ Suggested state:
    * Error → report → clear buffer
 5. Repeat until `exit` or EOF
 
+### Batch Process
+
+1. Take name of a file containing a script and optional arguments
+2. Process the script for proper syntax
+3. Best effort script execution:
+   * parse script
+   * If syntax errors are discovered, emit error message and terminate
+   * Proceed with execution of AST
+   * If a runtime error occurs, notify, roll back if possible, cleanup,
+     terminate
+   * Clean up and terminate returning error code like any bash script would
+
 ---
 
 ## Signals and Interrupts
