@@ -1,6 +1,8 @@
 // src/clanker/shell.cpp
 
+#include <fstream>
 #include <iostream>
+#include <sstream>
 
 #include "clanker/builtins.h"
 #include "clanker/executor.h"
@@ -24,7 +26,7 @@ int Shell::run() {
 
    LineEditor editor;
    Builtins builtins = make_builtins();
-   Executor exec{make_builtins(), root_, &cwd_, &oldpwd_};
+   Executor exec{std::move(builtins), root_, &cwd_, &oldpwd_};
    Parser parser;
 
    std::string buffer;
@@ -62,13 +64,78 @@ int Shell::run() {
          continue;
       }
 
-      // Complete:
       buffer.clear();
 
       if (pr.pipeline.stages.empty()) continue;
 
       last_status = exec.run_pipeline(pr.pipeline);
    }
+}
+
+int Shell::run_string(std::string_view script_text) {
+   Builtins builtins = make_builtins();
+   Executor exec(std::move(builtins), root_, &cwd_, &oldpwd_);
+   Parser parser;
+
+   int last_status = 0;
+
+   std::string buffer;
+   const std::string text(script_text);
+   std::istringstream in{text};
+
+   std::string line;
+   while (std::getline(in, line)) {
+      // Batch: treat newlines as separators, but allow multi-line completion.
+      if (!buffer.empty()) buffer.push_back('\n');
+      buffer += line;
+
+      const auto pr = parser.parse(buffer);
+      if (pr.kind == ParseKind::Incomplete) {
+         continue; // keep accumulating
+      }
+      if (pr.kind == ParseKind::Error) {
+         std::cerr << "parse: " << pr.message << '\n';
+         return 2;
+      }
+
+      buffer.clear();
+
+      if (pr.pipeline.stages.empty()) {
+         continue;            // nothing executed → preserve last_status
+      }
+      last_status = exec.run_pipeline(pr.pipeline);
+   }
+
+   if (!buffer.empty()) {
+      // In batch mode, EOF with incomplete construct is an error.
+      const auto pr = parser.parse(buffer);
+      if (pr.kind == ParseKind::Incomplete) {
+         std::cerr << "parse: unexpected end of input\n";
+         return 2;
+      }
+      if (pr.kind == ParseKind::Error) {
+         std::cerr << "parse: " << pr.message << '\n';
+         return 2;
+      }
+      if (pr.pipeline.stages.empty()) {
+         return last_status;  // nothing executed → preserve last_status
+      }
+      last_status = exec.run_pipeline(pr.pipeline);
+   }
+
+   return last_status;
+}
+
+int Shell::run_file(const std::filesystem::path& script_path) {
+   std::ifstream f(script_path);
+   if (!f) {
+      std::cerr << "clanker: cannot open script: " << script_path << '\n';
+      return 2;
+   }
+
+   std::ostringstream ss;
+   ss << f.rdbuf();
+   return run_string(ss.str());
 }
 
 } // namespace clanker

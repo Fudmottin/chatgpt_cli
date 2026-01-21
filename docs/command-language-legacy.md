@@ -1,6 +1,7 @@
-# clanker — command language
+# clanker — command language - legacy
 
-This document specifies the command language accepted by the clanker shell.
+This document specifies the command language accepted by the clanker shell. It
+has been superceeded by grammar.txt.
 
 The language is inspired by POSIX shells (notably `bash`), but is intentionally
 smaller and more predictable. Only features explicitly described here are

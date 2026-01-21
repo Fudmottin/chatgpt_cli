@@ -1,11 +1,41 @@
-#include "clanker/shell.h"
+// src/main.cpp
 
 #include <iostream>
+#include <string_view>
 
-int main() {
+#include "clanker/shell.h"
+
+namespace {
+
+void usage(std::ostream& os, std::string_view prog) {
+   os << "usage:\n"
+      << "  " << prog << "            # REPL\n"
+      << "  " << prog << " -c CMD     # run CMD, batch mode\n"
+      << "  " << prog << " SCRIPT     # run SCRIPT file, batch mode\n";
+}
+
+} // namespace
+
+int main(int argc, char** argv) {
    try {
       clanker::Shell shell;
-      return shell.run();
+
+      if (argc == 1) {
+         return shell.run(); // REPL
+      }
+
+      const std::string_view prog = (argc > 0 && argv[0]) ? argv[0] : "clanker";
+
+      if (argc == 3 && std::string_view{argv[1]} == "-c") {
+         return shell.run_string(argv[2]);
+      }
+
+      if (argc == 2) {
+         return shell.run_file(argv[1]);
+      }
+
+      usage(std::cerr, prog);
+      return 2;
    } catch (const std::exception& e) {
       std::cerr << "fatal: " << e.what() << '\n';
       return 1;

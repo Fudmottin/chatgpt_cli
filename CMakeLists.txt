@@ -48,3 +48,18 @@ endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+enable_testing()
+
+add_executable(clanker_tests
+    src/tests/test_main.cpp
+)
+
+target_compile_options(clanker_tests PRIVATE
+    -Wall -Wextra -Wpedantic
+)
+
+add_test(
+    NAME clanker_smoke
+    COMMAND clanker_tests $<TARGET_FILE:clanker>
+)
+
