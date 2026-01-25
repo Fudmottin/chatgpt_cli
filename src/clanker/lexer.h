@@ -1,5 +1,4 @@
 // src/clanker/lexer.h
-
 #pragma once
 
 #include <cstddef>
@@ -17,11 +16,15 @@ struct SourceLoc {
 
 enum class TokenKind {
    Word,
+
    Pipe,      // |
    AndIf,     // &&
    OrIf,      // ||
    Ampersand, // &
-   End        // sentinel
+   Semicolon, // ;
+   Newline,   // \n (command terminator)
+
+   End // sentinel
 };
 
 struct Token {
@@ -44,7 +47,7 @@ class Lexer {
    LexResult lex(std::string_view input) const;
 
  private:
-   static bool is_space(char c) noexcept;
+   static bool is_hspace(char c) noexcept; // space/tab/cr (NOT newline)
 };
 
 } // namespace clanker

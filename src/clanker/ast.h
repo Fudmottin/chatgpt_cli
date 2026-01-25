@@ -14,5 +14,9 @@ struct Pipeline {
    std::vector<SimpleCommand> stages; // size >= 1
 };
 
+struct CommandList {
+   std::vector<Pipeline> pipelines;
+};
+
 } // namespace clanker
 

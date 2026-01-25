@@ -10,12 +10,15 @@
 #   - (A)      : grouping
 #
 # IMPORTANT LEXICAL RULES
-#   1) Whitespace is not syntactically significant except as a token separator.
-#      (I.e., spaces/tabs/newlines separate tokens when needed; they are otherwise ignored.)
-#   2) Newline is a command terminator like ';' when not within quotes / $() / backticks /
-#      $(( )) / here-doc bodies / compound constructs awaiting completion.
-#   3) Parsing is done on a token stream produced by a lexer. The lexer must recognize
-#      operators even when adjacent to words, e.g.:
+#   1) Whitespace separates tokens except inside recognized word constructs
+#      (quotes, command substitutions, arithmetic expansions, and brace groups),
+#      where it is retained or may be normalized per feature rules.
+#      (I.e., spaces/tabs/newlines separate tokens when needed; they are otherwise
+#       ignored.)
+#   2) Newline is a command terminator like ';' when not within quotes / $() / back
+#      ticks / $(( )) / here-doc bodies / compound constructs awaiting completion.
+#   3) Parsing is done on a token stream produced by a lexer. The lexer must
+#      recognize operators even when adjacent to words, e.g.:
 #         echo hi>>*.txt
 #      tokenizes as: WORD("echo") WORD("hi") OP(">>") WORD("*.txt")
 #

@@ -1,12 +1,14 @@
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <unistd.h>
+// src/tests/test_main.cpp
 
 #include <cerrno>
 #include <cstring>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #include <vector>
 
 namespace {
@@ -77,10 +79,23 @@ RunResult run_clanker(const char* clanker_path, std::string_view cmd) {
       throw std::runtime_error("waitpid failed");
    }
 
-   if (WIFEXITED(status)) rr.exit_code = WEXITSTATUS(status);
-   else rr.exit_code = 128;
+   if (WIFEXITED(status))
+      rr.exit_code = WEXITSTATUS(status);
+   else
+      rr.exit_code = 128;
 
    return rr;
+}
+
+[[noreturn]] void usage() {
+   std::cerr << "usage: clanker_tests /path/to/clanker [--case NAME]\n"
+             << "cases:\n"
+             << "  smoke\n"
+             << "  pipeline\n"
+             << "  list\n"
+             << "  status\n"
+             << "  not_implemented\n";
+   std::exit(2);
 }
 
 void expect(bool ok, std::string_view msg) {
@@ -90,28 +105,105 @@ void expect(bool ok, std::string_view msg) {
    }
 }
 
+std::string_view get_case(int argc, char** argv) {
+   // Default: run everything.
+   for (int i = 2; i < argc; ++i) {
+      const std::string_view a = argv[i];
+      if (a == "--case") {
+         if (i + 1 >= argc) usage();
+         return std::string_view(argv[i + 1]);
+      }
+   }
+   return "all";
+}
+
+// ---- Test groups ----
+
+void test_smoke(const char* clanker) {
+   const auto rr = run_clanker(clanker, "echo hi");
+   expect(rr.exit_code == 0, "echo exit code");
+   expect(rr.out == "hi\n", "echo stdout");
+   expect(rr.err.empty(), "echo stderr empty");
+}
+
+void test_pipeline(const char* clanker) {
+   const auto rr = run_clanker(clanker, "echo a|cat");
+   expect(rr.exit_code == 0, "pipeline exit code");
+   expect(rr.out == "a\n", "pipeline stdout");
+   expect(rr.err.empty(), "pipeline stderr empty");
+}
+
+void test_list(const char* clanker) {
+   {
+      const auto rr = run_clanker(clanker, "echo a; echo b");
+      expect(rr.exit_code == 0, "list ';' exit code");
+      expect(rr.out == "a\nb\n", "list ';' stdout");
+      expect(rr.err.empty(), "list ';' stderr empty");
+   }
+   {
+      const auto rr = run_clanker(clanker, "echo a;echo b");
+      expect(rr.exit_code == 0, "list adjacency exit code");
+      expect(rr.out == "a\nb\n", "list adjacency stdout");
+      expect(rr.err.empty(), "list adjacency stderr empty");
+   }
+   {
+      const auto rr = run_clanker(clanker, "echo a; echo b;");
+      expect(rr.exit_code == 0, "list trailing ';' exit code");
+      expect(rr.out == "a\nb\n", "list trailing ';' stdout");
+      expect(rr.err.empty(), "list trailing ';' stderr empty");
+   }
+   {
+      const auto rr = run_clanker(clanker, "echo a\necho b");
+      expect(rr.exit_code == 0, "list newline exit code");
+      expect(rr.out == "a\nb\n", "list newline stdout");
+      expect(rr.err.empty(), "list newline stderr empty");
+   }
+}
+
+void test_status(const char* clanker) {
+   {
+      const auto rr = run_clanker(clanker, "false; true");
+      expect(rr.exit_code == 0, "status last wins (false; true)");
+   }
+   {
+      const auto rr = run_clanker(clanker, "true; false");
+      expect(rr.exit_code != 0, "status last wins (true; false)");
+   }
+}
+
+void test_not_implemented(const char* clanker) {
+   const auto rr = run_clanker(clanker, "false&&echo x");
+   expect(rr.exit_code != 0, "false&&... exit code");
+   expect(rr.out.empty(), "false&&... stdout empty");
+   // Be permissive about stderr: parse-time vs run-time error may evolve.
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
-   expect(argc == 2, "usage: clanker_tests /path/to/clanker");
+   if (argc < 2) usage();
    const char* clanker = argv[1];
 
-   {
-      const auto rr = run_clanker(clanker, "echo hi");
-      expect(rr.exit_code == 0, "echo exit code");
-      expect(rr.out == "hi\n", "echo stdout");
-   }
+   const std::string_view which = get_case(argc, argv);
 
-   {
-      const auto rr = run_clanker(clanker, "echo a|cat");
-      expect(rr.exit_code == 0, "pipeline exit code");
-      expect(rr.out == "a\n", "pipeline stdout");
-   }
-
-   {
-      const auto rr = run_clanker(clanker, "false&&echo x");
-      expect(rr.exit_code != 0, "false&&... exit code");
-      expect(rr.out.empty(), "false&&... stdout empty");
+   if (which == "all") {
+      test_smoke(clanker);
+      test_pipeline(clanker);
+      test_list(clanker);
+      test_status(clanker);
+      test_not_implemented(clanker);
+   } else if (which == "smoke") {
+      test_smoke(clanker);
+   } else if (which == "pipeline") {
+      test_pipeline(clanker);
+   } else if (which == "list") {
+      test_list(clanker);
+   } else if (which == "status") {
+      test_status(clanker);
+   } else if (which == "not_implemented") {
+      test_not_implemented(clanker);
+   } else {
+      usage();
    }
 
    std::cout << "OK\n";

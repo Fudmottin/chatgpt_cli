@@ -1,5 +1,4 @@
 // src/clanker/lexer.cpp
-
 #include <string>
 
 #include "clanker/lexer.h"
@@ -37,8 +36,8 @@ struct Cursor {
 
 } // namespace
 
-bool Lexer::is_space(char c) noexcept {
-   return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+bool Lexer::is_hspace(char c) noexcept {
+   return c == ' ' || c == '\t' || c == '\r';
 }
 
 static LexResult error_at(const std::string& msg, const SourceLoc& loc) {
@@ -66,13 +65,14 @@ LexResult Lexer::lex(std::string_view input) const {
       out.tokens.push_back(Token{.kind = k, .text = {}, .loc = loc});
    };
 
-   auto skip_ws = [&]() {
-      while (!cur.eof() && is_space(cur.peek())) cur.advance();
+   auto skip_hspace = [&]() {
+      while (!cur.eof() && is_hspace(cur.peek())) cur.advance();
    };
 
    auto skip_comment = [&]() {
       // assumes current char is '#'
       while (!cur.eof() && cur.peek() != '\n') cur.advance();
+      // do NOT consume '\n' here; it is a terminator token
    };
 
    auto lex_word = [&]() -> LexResult {
@@ -88,12 +88,15 @@ LexResult Lexer::lex(std::string_view input) const {
          const char c = cur.peek();
 
          if (!in_single && !in_double) {
-            if (is_space(c)) break;
-            if (c ==
-                '#') // comment begins at token boundary or after whitespace
-               break;
+            // token boundaries
+            if (is_hspace(c)) break;
+            if (c == '\n') break;
+            if (c == ';') break;
+            if (c == '#')
+               break; // comment begins at token boundary or after whitespace
             if (c == '|') break;
             if (c == '&') break;
+
             if (c == '\'') {
                in_single = true;
                cur.advance();
@@ -131,7 +134,6 @@ LexResult Lexer::lex(std::string_view input) const {
                cur.advance();
                continue;
             }
-            // literal
             append(c);
             cur.advance();
             continue;
@@ -163,7 +165,6 @@ LexResult Lexer::lex(std::string_view input) const {
                append('\n');
                break;
             default:
-               // Spec says other escapes are unspecified; reject for now.
                return error_at("unsupported escape in double quotes", esc_loc);
             }
             cur.advance();
@@ -184,10 +185,24 @@ LexResult Lexer::lex(std::string_view input) const {
    };
 
    while (!cur.eof()) {
-      skip_ws();
+      skip_hspace();
       if (cur.eof()) break;
 
       const char c = cur.peek();
+
+      if (c == '\n') {
+         const SourceLoc loc = cur.loc;
+         cur.advance();
+         push_op(TokenKind::Newline, loc);
+         continue;
+      }
+
+      if (c == ';') {
+         const SourceLoc loc = cur.loc;
+         cur.advance();
+         push_op(TokenKind::Semicolon, loc);
+         continue;
+      }
 
       if (c == '#') {
          skip_comment();

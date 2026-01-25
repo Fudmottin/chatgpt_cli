@@ -14,6 +14,31 @@
 
 namespace clanker {
 
+namespace {
+
+// Execute a successfully-parsed unit.
+// Current staged semantics:
+// - pipeline: run it
+// - list: run pipelines sequentially; status is that of the last executed
+// pipeline
+// - empty: run nothing; preserve last_status
+int execute_parse_result(Executor& exec, const ParseResult& pr,
+                         int last_status) {
+   if (pr.result_is_list()) {
+      for (const auto& pl : pr.list.pipelines) {
+         if (pl.stages.empty()) continue;
+         last_status = exec.run_pipeline(pl);
+      }
+      return last_status;
+   }
+
+   // Legacy single-pipeline path
+   if (pr.pipeline.stages.empty()) return last_status;
+   return exec.run_pipeline(pr.pipeline);
+}
+
+} // namespace
+
 Shell::Shell() {
    const auto p = std::filesystem::current_path();
    root_ = p;
@@ -65,10 +90,7 @@ int Shell::run() {
       }
 
       buffer.clear();
-
-      if (pr.pipeline.stages.empty()) continue;
-
-      last_status = exec.run_pipeline(pr.pipeline);
+      last_status = execute_parse_result(exec, pr, last_status);
    }
 }
 
@@ -99,11 +121,7 @@ int Shell::run_string(std::string_view script_text) {
       }
 
       buffer.clear();
-
-      if (pr.pipeline.stages.empty()) {
-         continue;            // nothing executed → preserve last_status
-      }
-      last_status = exec.run_pipeline(pr.pipeline);
+      last_status = execute_parse_result(exec, pr, last_status);
    }
 
    if (!buffer.empty()) {
@@ -117,10 +135,7 @@ int Shell::run_string(std::string_view script_text) {
          std::cerr << "parse: " << pr.message << '\n';
          return 2;
       }
-      if (pr.pipeline.stages.empty()) {
-         return last_status;  // nothing executed → preserve last_status
-      }
-      last_status = exec.run_pipeline(pr.pipeline);
+      last_status = execute_parse_result(exec, pr, last_status);
    }
 
    return last_status;

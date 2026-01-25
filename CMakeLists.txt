@@ -58,8 +58,29 @@ target_compile_options(clanker_tests PRIVATE
     -Wall -Wextra -Wpedantic
 )
 
+# Register multiple CTest entries, one executable.
 add_test(
     NAME clanker_smoke
-    COMMAND clanker_tests $<TARGET_FILE:clanker>
+    COMMAND clanker_tests $<TARGET_FILE:clanker> --case smoke
+)
+
+add_test(
+    NAME clanker_pipeline
+    COMMAND clanker_tests $<TARGET_FILE:clanker> --case pipeline
+)
+
+add_test(
+    NAME clanker_list
+    COMMAND clanker_tests $<TARGET_FILE:clanker> --case list
+)
+
+add_test(
+    NAME clanker_status
+    COMMAND clanker_tests $<TARGET_FILE:clanker> --case status
+)
+
+add_test(
+    NAME clanker_not_implemented
+    COMMAND clanker_tests $<TARGET_FILE:clanker> --case not_implemented
 )
 
