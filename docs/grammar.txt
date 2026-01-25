@@ -1,6 +1,7 @@
 # grammar.txt
 #
-# clanker shell grammar (POSIX sh as subset; selected bash/zsh/csh-inspired extensions).
+# clanker shell grammar (POSIX sh as subset; selected bash/zsh/csh-inspired
+# extensions).
 #
 # Notation: EBNF-ish.
 #   - A B      : concatenation
@@ -35,7 +36,8 @@
 #   - clanker adds a policy switch for "multi-target redirects" (zsh-like):
 #       if a redirection target expands to N>1 paths:
 #         * posix/bash mode: error "ambiguous redirect"
-#         * zsh mode: apply redirect to each path (open each file and duplicate output)
+#         * zsh mode: apply redirect to each path (open each file and duplicate
+#           output)
 #
 # ------------------------------------------------------------------------------
 # TOKENS
@@ -57,13 +59,15 @@
 #   time              # (optional keyword)
 #
 # Word-like tokens:
-#   WORD              # general word (may contain quotes/escapes; produced as one token)
-#   ASSIGNMENT_WORD   # NAME '=' WORD?   (no whitespace around '=')
+#   WORD              # general word (may contain quotes/escapes; produced as 
+#                       one token)
+#   ASSIGNMENT_WORD   # NAME '=' WORD?   (allow and discard whitespace around '=')
 #   IO_NUMBER         # [0-9]+ when immediately preceding a redirection operator
 #
 # Here-doc marker handling is lexical+parser cooperation:
-#   After seeing '<<' or '<<-' the next WORD is a delimiter. The lexer then collects
-#   raw lines until the delimiter line is seen; those lines become HERE_BODY.
+#   After seeing '<<' or '<<-' the next WORD is a delimiter. The lexer then
+#   collects raw lines until the delimiter line is seen; those lines become
+#   HERE_BODY.
 #
 # ------------------------------------------------------------------------------
 # START SYMBOLS
@@ -71,21 +75,29 @@
 # Same grammar for batch and REPL. The difference is the input source and the
 # "need more input?" policy when the parser sees an incomplete construct.
 #
-program        ::= { complete_command terminator } [ complete_command ] [ terminator ] EOF ;
-terminator     ::= ";" | NEWLINE ;
-EOF            ::= <end of input> ;
+
+program      ::= { complete_command terminator } [ complete_command ] 
+                 [ terminator ] EOF ;
+
+terminator   ::= ";" | NEWLINE ;
+
+EOF          ::= <end of input> ;
 
 # A "complete_command" is what the REPL executes as a unit.
+
 complete_command ::= list ;
 
 # ------------------------------------------------------------------------------
 # LISTS, AND/OR, PIPELINES
 #
-list           ::= and_or { ( ";" | "&" | NEWLINE ) and_or } [ ( ";" | "&" | NEWLINE ) ] ;
+
+list           ::= and_or { ( ";" | "&" | NEWLINE ) and_or } [ ( ";" | "&" | 
+                   NEWLINE ) ] ;
 
 and_or         ::= pipeline { ( "&&" | "||" ) linebreak pipeline } ;
 
 pipeline       ::= [ "!" ] pipe_sequence ;
+
 pipe_sequence  ::= command { ( "|" | "|&" ) linebreak command } ;
 
 linebreak      ::= { NEWLINE } ;
@@ -93,14 +105,19 @@ linebreak      ::= { NEWLINE } ;
 # ------------------------------------------------------------------------------
 # COMMANDS
 #
+
 command        ::= simple_command
                 | compound_command [ redirect_list ]
                 | function_definition ;
 
 # POSIX simple command: assignments + words + redirections in (almost) any order.
+
 simple_command ::= { prefix } [ command_name { element } ] ;
+
 prefix         ::= ASSIGNMENT_WORD | redirection ;
+
 element        ::= WORD | redirection ;
+
 command_name   ::= WORD ;
 
 redirect_list  ::= { redirection } ;
@@ -111,6 +128,7 @@ redirect_list  ::= { redirection } ;
 # Redirection operators. Targets are WORDs (subject to expansion rules).
 # Multi-target behavior (WORD expands to multiple paths) is a runtime policy.
 #
+
 redirection    ::= [ IO_NUMBER ] redir_op redirect_word
                 | here_redirection ;
 
@@ -120,11 +138,13 @@ redir_op       ::= ">" | ">>" | "<" | "<>" | ">|"
 redirect_word  ::= WORD ;
 
 here_redirection ::= [ IO_NUMBER ] ( "<<" | "<<-" ) here_delim HERE_BODY ;
+
 here_delim       ::= WORD ;
 
 # ------------------------------------------------------------------------------
 # COMPOUND COMMANDS
 #
+
 compound_command ::= brace_group
                    | subshell
                    | if_clause
@@ -134,6 +154,7 @@ compound_command ::= brace_group
                    | case_clause ;
 
 brace_group    ::= "{" linebreak compound_list "}" ;
+
 subshell       ::= "(" linebreak compound_list ")" ;
 
 compound_list  ::= and_or { ( ";" | NEWLINE ) and_or } [ ( ";" | NEWLINE ) ] ;
@@ -144,29 +165,38 @@ if_clause      ::= "if"   compound_list "then" compound_list
                    "fi" ;
 
 while_clause   ::= "while" compound_list "do" compound_list "done" ;
+
 until_clause   ::= "until" compound_list "do" compound_list "done" ;
 
 # POSIX for:
 #   for name [in words...] ; do list ; done
 # bash/zsh extension: C-style for is optional and can be added later.
+
 for_clause     ::= "for" NAME [ linebreak "in" { WORD } ] list_terminator
                    "do" compound_list "done" ;
 
 list_terminator ::= ";" | NEWLINE ;
 
 case_clause    ::= "case" WORD "in" linebreak { case_item } "esac" ;
+
 case_item      ::= pattern_list ")" linebreak [ compound_list ] case_terminator ;
+
 pattern_list   ::= pattern { "|" pattern } ;
-pattern        ::= WORD ;     # treated as patterns; expansion differs (no field split)
+
+pattern        ::= WORD ;     # treated as patterns; expansion differs (no field 
+                                split)
+
 case_terminator ::= ";;" | ";&" | ";|" | NEWLINE ;
 
 # ------------------------------------------------------------------------------
 # FUNCTIONS (POSIX-ish + bash 'function' keyword as sugar)
 #
+
 function_definition ::= function_name "(" ")" linebreak function_body
                       | "function" function_name linebreak function_body ;
 
 function_name  ::= NAME ;
+
 function_body  ::= compound_command [ redirect_list ] ;
 
 NAME           ::= <shell name token: [A-Za-z_][A-Za-z0-9_]* > ;
@@ -177,7 +207,8 @@ NAME           ::= <shell name token: [A-Za-z_][A-Za-z0-9_]* > ;
 # WORD is produced by the lexer according to shell quoting rules:
 #   - unquoted text
 #   - single quotes: '...'
-#   - double quotes: "..." (allows $, ``, \, and possibly "$'...'" extensions later)
+#   - double quotes: "..." (allows $, ``, \, and possibly "$'...'" extensions 
+#     later)
 #   - escapes: \c
 #   - command substitution: $( ... ) or ` ... `
 #   - arithmetic expansion: $(( ... ))
@@ -193,8 +224,9 @@ NAME           ::= <shell name token: [A-Za-z_][A-Za-z0-9_]* > ;
 #    compound_list
 # end
 #
-# foreach_clause ::= "foreach" NAME "(" { WORD } ")" linebreak compound_list "end" ;
-#
+
+foreach_clause ::= "foreach" NAME "(" { WORD } ")" linebreak compound_list "end" ;
+
 # 2) history expansion (csh-like): recognized in the lexer as a pre-expansion phase
 #    unless disabled. Grammar-wise it is just part of WORD.
 #
