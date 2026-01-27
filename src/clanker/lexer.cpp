@@ -13,7 +13,13 @@ struct Cursor {
    SourceLoc loc{0, 1, 1};
 
    bool eof() const noexcept { return i >= s.size(); }
+
    char peek() const noexcept { return eof() ? '\0' : s[i]; }
+
+   char peek_n(std::size_t n) const noexcept {
+      const std::size_t j = i + n;
+      return (j >= s.size()) ? '\0' : s[j];
+   }
 
    void advance() noexcept {
       if (eof()) return;
@@ -29,6 +35,16 @@ struct Cursor {
 
    bool consume(char c) noexcept {
       if (peek() != c) return false;
+      advance();
+      return true;
+   }
+
+   bool consume3(char a, char b, char c) noexcept {
+      if (peek() != a) return false;
+      if (peek_n(1) != b) return false;
+      if (peek_n(2) != c) return false;
+      advance();
+      advance();
       advance();
       return true;
    }
@@ -82,42 +98,122 @@ LexResult Lexer::lex(std::string_view input) const {
       bool in_single = false;
       bool in_double = false;
 
+      bool in_triple = false;
+      char triple_q = '\0'; // '\'' or '"'
+
+      bool in_backtick = false;
+
+      int brace_depth = 0;
+      int subst_paren_depth = 0; // for $(...)
+
       auto append = [&](char c) { w.push_back(c); };
+
+      auto is_token_boundary = [&](char c) -> bool {
+         if (in_single || in_double || in_triple || in_backtick) return false;
+         if (brace_depth > 0 || subst_paren_depth > 0) return false;
+
+         if (is_hspace(c)) return true;
+         if (c == '\n') return true;
+         if (c == ';') return true;
+         if (c == '#') return true; // comment begins at token boundary
+         if (c == '|') return true;
+         if (c == '&') return true;
+         return false;
+      };
+
+      auto lex_triple = [&](char q) -> LexResult {
+         // current cursor points at the first quote of the triple sequence
+         const SourceLoc qloc = cur.loc;
+         if (q == '\'' && !cur.consume3('\'', '\'', '\'')) return {};
+         if (q == '"' && !cur.consume3('"', '"', '"')) return {};
+         // do not include the delimiters in the produced WORD; they affect
+         // lexing only. If you prefer keeping them, append them here.
+         in_triple = true;
+         triple_q = q;
+         (void)qloc;
+         return LexResult{.kind = LexKind::Complete};
+      };
+
+      auto try_start_triple = [&]() -> bool {
+         const char c = cur.peek();
+         if (c != '\'' && c != '"') return false;
+         if (cur.peek_n(1) != c) return false;
+         if (cur.peek_n(2) != c) return false;
+         LexResult r = lex_triple(c);
+         if (r.kind == LexKind::Error) return true;
+         if (r.kind == LexKind::Incomplete) return true;
+         return true;
+      };
+
+      auto finish_triple_if_present = [&]() -> bool {
+         if (!in_triple) return false;
+         const char q = triple_q;
+         if (cur.peek() != q) return false;
+         if (cur.peek_n(1) != q) return false;
+         if (cur.peek_n(2) != q) return false;
+         cur.advance();
+         cur.advance();
+         cur.advance();
+         in_triple = false;
+         triple_q = '\0';
+         return true;
+      };
+
+      auto try_start_command_subst = [&]() -> bool {
+         // $(...)
+         if (cur.peek() != '$') return false;
+         if (cur.peek_n(1) != '(') return false;
+         append('$');
+         append('(');
+         cur.advance();
+         cur.advance();
+         ++subst_paren_depth;
+         return true;
+      };
+
+      auto try_start_backtick = [&]() -> bool {
+         if (cur.peek() != '`') return false;
+         // We do not include the delimiters in the WORD output, matching how
+         // quotes are handled. If you prefer to preserve them, append them.
+         cur.advance();
+         in_backtick = true;
+         return true;
+      };
+
+      auto finish_backtick_if_present = [&]() -> bool {
+         if (!in_backtick) return false;
+         if (cur.peek() != '`') return false;
+         cur.advance();
+         in_backtick = false;
+         return true;
+      };
 
       while (!cur.eof()) {
          const char c = cur.peek();
 
-         if (!in_single && !in_double) {
-            // token boundaries
-            if (is_hspace(c)) break;
-            if (c == '\n') break;
-            if (c == ';') break;
-            if (c == '#')
-               break; // comment begins at token boundary or after whitespace
-            if (c == '|') break;
-            if (c == '&') break;
+         // Triple-quoted body: everything is literal until matching delimiter.
+         if (in_triple) {
+            if (finish_triple_if_present()) continue;
+            append(c);
+            cur.advance();
+            continue;
+         }
 
-            if (c == '\'') {
-               in_single = true;
-               cur.advance();
-               continue;
-            }
-            if (c == '"') {
-               in_double = true;
-               cur.advance();
-               continue;
-            }
+         // Backtick body: allow escapes; terminate on unescaped backtick.
+         if (in_backtick) {
+            if (finish_backtick_if_present()) continue;
+
             if (c == '\\') {
                const SourceLoc esc_loc = cur.loc;
                cur.advance();
                if (cur.eof()) return incomplete_at(esc_loc);
                const char n = cur.peek();
                if (n == '\n') {
-                  // escaped newline: remove it (treat as nothing)
+                  // continuation
                   cur.advance();
                   continue;
                }
-               // generic escape: take next char literally
+               // bash/zsh-like: backslash escapes next char including '`'
                append(n);
                cur.advance();
                continue;
@@ -128,6 +224,7 @@ LexResult Lexer::lex(std::string_view input) const {
             continue;
          }
 
+         // Single-quoted body
          if (in_single) {
             if (c == '\'') {
                in_single = false;
@@ -139,12 +236,78 @@ LexResult Lexer::lex(std::string_view input) const {
             continue;
          }
 
-         // in_double
-         if (c == '"') {
-            in_double = false;
+         // Double-quoted body
+         if (in_double) {
+            if (c == '"') {
+               in_double = false;
+               cur.advance();
+               continue;
+            }
+            if (c == '\\') {
+               const SourceLoc esc_loc = cur.loc;
+               cur.advance();
+               if (cur.eof()) return incomplete_at(esc_loc);
+               const char n = cur.peek();
+               if (n == '\n') {
+                  cur.advance();
+                  continue;
+               }
+               switch (n) {
+               case '"':
+                  append('"');
+                  break;
+               case '\\':
+                  append('\\');
+                  break;
+               case 'n':
+                  append('\n');
+                  break;
+               default:
+                  return error_at("unsupported escape in double quotes",
+                                  esc_loc);
+               }
+               cur.advance();
+               continue;
+            }
+            append(c);
             cur.advance();
             continue;
          }
+
+         // Not in any quote-like mode.
+
+         // Token boundary only when not inside brace-group or command-subst.
+         if (is_token_boundary(c)) break;
+
+         // Comments: only start a comment when at a token boundary. Since we
+         // didn't break above, '#' here is not a boundary -> literal.
+         // (E.g. foo#bar is a WORD.)
+
+         // Triple quotes start (Python-style).
+         if (try_start_triple()) {
+            // started triple; do not include delimiters
+            continue;
+         }
+
+         // Quotes
+         if (c == '\'') {
+            in_single = true;
+            cur.advance();
+            continue;
+         }
+         if (c == '"') {
+            in_double = true;
+            cur.advance();
+            continue;
+         }
+
+         // Command substitution: $(...)
+         if (try_start_command_subst()) continue;
+
+         // Backticks
+         if (try_start_backtick()) continue;
+
+         // Backslash escape (outside quotes)
          if (c == '\\') {
             const SourceLoc esc_loc = cur.loc;
             cur.advance();
@@ -154,28 +317,51 @@ LexResult Lexer::lex(std::string_view input) const {
                cur.advance();
                continue;
             }
-            switch (n) {
-            case '"':
-               append('"');
-               break;
-            case '\\':
-               append('\\');
-               break;
-            case 'n':
-               append('\n');
-               break;
-            default:
-               return error_at("unsupported escape in double quotes", esc_loc);
-            }
+            append(n);
             cur.advance();
             continue;
          }
 
+         // Track brace-groups as lexical WORD constructs.
+         if (c == '{') {
+            ++brace_depth;
+            append(c);
+            cur.advance();
+            continue;
+         }
+         if (c == '}') {
+            if (brace_depth > 0) --brace_depth;
+            append(c);
+            cur.advance();
+            continue;
+         }
+
+         // Track $(...) nesting by parentheses depth within substitution.
+         if (subst_paren_depth > 0) {
+            if (c == '(') {
+               ++subst_paren_depth;
+               append(c);
+               cur.advance();
+               continue;
+            }
+            if (c == ')') {
+               --subst_paren_depth;
+               append(c);
+               cur.advance();
+               continue;
+            }
+         }
+
+         // Ordinary character
          append(c);
          cur.advance();
       }
 
-      if (in_single || in_double) return incomplete_at(start);
+      // If any construct is still open, we need more input.
+      if (in_single || in_double || in_triple || in_backtick) {
+         return incomplete_at(start);
+      }
+      if (brace_depth > 0 || subst_paren_depth > 0) return incomplete_at(start);
 
       if (w.empty()) return error_at("expected word", start);
 

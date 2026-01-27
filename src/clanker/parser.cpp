@@ -22,6 +22,28 @@ static bool pipeline_is_empty(const Pipeline& pl) {
    return true;
 }
 
+static const char* token_spelling(TokenKind k) noexcept {
+   switch (k) {
+   case TokenKind::Word:
+      return "word";
+   case TokenKind::Pipe:
+      return "|";
+   case TokenKind::AndIf:
+      return "&&";
+   case TokenKind::OrIf:
+      return "||";
+   case TokenKind::Ampersand:
+      return "&";
+   case TokenKind::Semicolon:
+      return ";";
+   case TokenKind::Newline:
+      return "newline";
+   case TokenKind::End:
+      return "<end>";
+   }
+   return "<unknown>";
+}
+
 static ParseResult parse_error(std::string msg) {
    return {.kind = ParseKind::Error, .message = std::move(msg)};
 }
@@ -54,17 +76,20 @@ ParseResult Parser::parse(const std::string& input) const {
       current.stages.push_back(SimpleCommand{});
    };
 
-   auto push_current_if_nonempty = [&]() -> ParseResult* {
+   auto push_current_if_nonempty = [&]() -> ParseResult {
       if (pipeline_is_empty(current)) {
          reset_current();
-         return nullptr;
+         return {.kind = ParseKind::Complete};
       }
-      if (!current.stages.empty() && current.stages.back().argv.empty())
-         return new ParseResult(parse_error("empty pipeline stage"));
+
+      if (!current.stages.empty() && current.stages.back().argv.empty()) {
+         reset_current();
+         return parse_error("syntax error: empty pipeline stage");
+      }
 
       list.pipelines.push_back(std::move(current));
       reset_current();
-      return nullptr;
+      return {.kind = ParseKind::Complete};
    };
 
    for (const Token& t : lr.tokens) {
@@ -74,27 +99,26 @@ ParseResult Parser::parse(const std::string& input) const {
          break;
 
       case TokenKind::Pipe:
-         if (current.stages.back().argv.empty())
-            return parse_error("empty pipeline stage");
+         if (current.stages.back().argv.empty()) {
+            return parse_error("syntax error: empty pipeline stage before '|'");
+         }
          current.stages.push_back(SimpleCommand{});
          break;
 
       case TokenKind::Semicolon:
       case TokenKind::Newline: {
          saw_terminator = true;
-         ParseResult* maybe_err = push_current_if_nonempty();
-         if (maybe_err) {
-            ParseResult out = *maybe_err;
-            delete maybe_err;
-            return out;
-         }
+         const ParseResult r = push_current_if_nonempty();
+         if (r.kind == ParseKind::Error) return r;
          break;
       }
 
       case TokenKind::AndIf:
       case TokenKind::OrIf:
       case TokenKind::Ampersand:
-         return parse_error("operators not implemented yet");
+         return parse_error(std::string("syntax error: operator '") +
+                            token_spelling(t.kind) +
+                            "' is recognized but not implemented");
 
       case TokenKind::End:
          break;
@@ -103,8 +127,10 @@ ParseResult Parser::parse(const std::string& input) const {
 
    // Finalize trailing pipeline at EOF.
    if (!pipeline_is_empty(current)) {
-      if (!current.stages.empty() && current.stages.back().argv.empty())
-         return parse_error("empty pipeline stage");
+      if (!current.stages.empty() && current.stages.back().argv.empty()) {
+         return parse_error(
+            "syntax error: empty pipeline stage at end of input");
+      }
       list.pipelines.push_back(std::move(current));
    }
 
@@ -113,8 +139,7 @@ ParseResult Parser::parse(const std::string& input) const {
       return {.kind = ParseKind::Complete, .pipeline = Pipeline{}};
    }
 
-   // Backward compatibility: no terminator and exactly one pipeline => legacy
-   // field.
+   // Backward compatibility: no terminator and exactly one pipeline => legacy.
    if (!saw_terminator && list.pipelines.size() == 1) {
       Pipeline pl = std::move(list.pipelines.front());
       return {.kind = ParseKind::Complete, .pipeline = std::move(pl)};
