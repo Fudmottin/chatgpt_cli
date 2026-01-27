@@ -1,240 +1,264 @@
 # grammar.txt
 #
-# clanker shell grammar (POSIX sh as subset; selected bash/zsh/csh-inspired
-# extensions).
+# clanker shell grammar
 #
-# Notation: EBNF-ish.
-#   - A B      : concatenation
-#   - A | B    : alternation
-#   - [A]      : optional
-#   - {A}      : repetition (0..n)
-#   - (A)      : grouping
+# This grammar defines the syntactic structure of the clanker command
+# language.  Lexical structure (WORD formation, quoting, brace-groups,
+# command substitution, etc.) is handled entirely by the lexer.
 #
-# IMPORTANT LEXICAL RULES
-#   1) Whitespace separates tokens except inside recognized word constructs
-#      (quotes, command substitutions, arithmetic expansions, and brace groups),
-#      where it is retained or may be normalized per feature rules.
-#      (I.e., spaces/tabs/newlines separate tokens when needed; they are otherwise
-#       ignored.)
-#   2) Newline is a command terminator like ';' when not within quotes / $() / back
-#      ticks / $(( )) / here-doc bodies / compound constructs awaiting completion.
-#   3) Parsing is done on a token stream produced by a lexer. The lexer must
-#      recognize operators even when adjacent to words, e.g.:
-#         echo hi>>*.txt
-#      tokenizes as: WORD("echo") WORD("hi") OP(">>") WORD("*.txt")
+# POSIX shell grammar is a guide, not a constraint.
 #
-# PIPELINE/LIST PRECEDENCE (tightest to loosest)
-#   (a) words, redirections, assignments (simple_command)
-#   (b) pipeline:            a | b | c
-#   (c) AND/OR list:         a && b || c
-#   (d) sequential list:     a ; b & c
+# Notation (EBNF-ish):
+#   A B        concatenation
+#   A | B      alternation
+#   [A]        optional
+#   {A}        repetition (0..n)
+#   (A)        grouping
 #
-# EXECUTION MODEL (informal, but required for implementation)
-#   - Parse into AST. Execute with expansions:
-#       tilde, parameter, command-subst, arithmetic, quote removal, field split,
-#       pathname expansion (glob), then redirections, then exec/builtin.
-#   - clanker adds a policy switch for "multi-target redirects" (zsh-like):
-#       if a redirection target expands to N>1 paths:
-#         * posix/bash mode: error "ambiguous redirect"
-#         * zsh mode: apply redirect to each path (open each file and duplicate
-#           output)
+# ----------------------------------------------------------------------
+# LEXICAL SUMMARY (NORMATIVE)
 #
-# ------------------------------------------------------------------------------
+# 1) Whitespace is treated as in C.
+#    Outside of WORD constructs, whitespace separates tokens.
+#    Inside WORD constructs, whitespace is literal and does not split
+#    tokens.
+#
+# 2) NEWLINE is a command terminator like ';' unless the parser is waiting
+#    for completion (open construct, trailing operator, etc.).
+#
+# 3) WORD is produced by the lexer and treated as opaque by the parser.
+#    WORD may contain:
+#      - unquoted text
+#      - single quotes        '...'
+#      - double quotes        "..."
+#      - triple quotes        '''...'''  """..."""
+#      - brace-groups         {...}   (nesting allowed)
+#      - command substitution $(...) or `...`
+#      - escapes              \c and \<newline>
+#
+# 4) Operators are recognized even when adjacent to WORDs.
+#
+# ----------------------------------------------------------------------
 # TOKENS
 #
 # Operators (longest match wins):
-#   "&&" "||" ">>" "<<"
+#   "&&" "||"
 #   "|&" "|"
-#   ";;" ";&" ";|"
-#   "<>" "<&" ">&" ">|"
-#   ">" "<"
+#   ">" "<" ">>"
 #   ";" "&"
 #   "(" ")" "{" "}"
 #
-# Reserved words (recognized only in "command position" per POSIX rules):
+# Reserved words (recognized only in command position):
 #   if then elif else fi
 #   for in do done
 #   while until case esac
-#   function select   # (extensions; may be accepted but not required)
-#   time              # (optional keyword)
+#   function select
+#   time
 #
 # Word-like tokens:
-#   WORD              # general word (may contain quotes/escapes; produced as 
-#                       one token)
-#   ASSIGNMENT_WORD   # NAME '=' WORD?   (allow and discard whitespace around '=')
-#   IO_NUMBER         # [0-9]+ when immediately preceding a redirection operator
+#   WORD
+#   ASSIGNMENT_WORD   NAME '=' WORD?
+#   IO_NUMBER         [0-9]+ immediately before redirection
 #
-# Here-doc marker handling is lexical+parser cooperation:
-#   After seeing '<<' or '<<-' the next WORD is a delimiter. The lexer then
-#   collects raw lines until the delimiter line is seen; those lines become
-#   HERE_BODY.
-#
-# ------------------------------------------------------------------------------
+# ----------------------------------------------------------------------
 # START SYMBOLS
 #
-# Same grammar for batch and REPL. The difference is the input source and the
-# "need more input?" policy when the parser sees an incomplete construct.
+
+program
+  ::= { complete_command terminator }
+      [ complete_command ]
+      [ terminator ]
+      EOF ;
+
+terminator
+  ::= ";" | NEWLINE ;
+
+complete_command
+  ::= list ;
+
+EOF
+  ::= <end of input> ;
+
+# ----------------------------------------------------------------------
+# LISTS, LOGICAL OPERATORS, PIPELINES
+#
+# Precedence (tightest → loosest):
+#   1) simple command elements
+#   2) pipeline
+#   3) && ||
+#   4) sequential list (; & NEWLINE)
 #
 
-program      ::= { complete_command terminator } [ complete_command ] 
-                 [ terminator ] EOF ;
+list
+  ::= and_or
+      { ( ";" | "&" | NEWLINE ) and_or }
+      [ ( ";" | "&" | NEWLINE ) ] ;
 
-terminator   ::= ";" | NEWLINE ;
+and_or
+  ::= pipeline
+      { ( "&&" | "||" ) linebreak pipeline } ;
 
-EOF          ::= <end of input> ;
+pipeline
+  ::= [ "!" ] pipe_sequence ;
 
-# A "complete_command" is what the REPL executes as a unit.
+pipe_sequence
+  ::= command
+      { ( "|" | "|&" ) linebreak command } ;
 
-complete_command ::= list ;
+linebreak
+  ::= { NEWLINE } ;
 
-# ------------------------------------------------------------------------------
-# LISTS, AND/OR, PIPELINES
-#
-
-list           ::= and_or { ( ";" | "&" | NEWLINE ) and_or } [ ( ";" | "&" | 
-                   NEWLINE ) ] ;
-
-and_or         ::= pipeline { ( "&&" | "||" ) linebreak pipeline } ;
-
-pipeline       ::= [ "!" ] pipe_sequence ;
-
-pipe_sequence  ::= command { ( "|" | "|&" ) linebreak command } ;
-
-linebreak      ::= { NEWLINE } ;
-
-# ------------------------------------------------------------------------------
+# ----------------------------------------------------------------------
 # COMMANDS
 #
 
-command        ::= simple_command
-                | compound_command [ redirect_list ]
-                | function_definition ;
+command
+  ::= simple_command
+   | compound_command [ redirect_list ]
+   | function_definition ;
 
-# POSIX simple command: assignments + words + redirections in (almost) any order.
+# ----------------------------------------------------------------------
+# SIMPLE COMMANDS
+#
+# POSIX-shaped: assignments, words, and redirections may appear in
+# nearly any order.
+#
 
-simple_command ::= { prefix } [ command_name { element } ] ;
+simple_command
+  ::= { prefix } [ command_name { element } ] ;
 
-prefix         ::= ASSIGNMENT_WORD | redirection ;
+prefix
+  ::= ASSIGNMENT_WORD
+   | redirection ;
 
-element        ::= WORD | redirection ;
+element
+  ::= WORD
+   | redirection ;
 
-command_name   ::= WORD ;
+command_name
+  ::= WORD ;
 
-redirect_list  ::= { redirection } ;
+redirect_list
+  ::= { redirection } ;
 
-# ------------------------------------------------------------------------------
+# ----------------------------------------------------------------------
 # REDIRECTIONS
 #
-# Redirection operators. Targets are WORDs (subject to expansion rules).
-# Multi-target behavior (WORD expands to multiple paths) is a runtime policy.
+# Targets are WORDs; expansion semantics are defined elsewhere.
 #
 
-redirection    ::= [ IO_NUMBER ] redir_op redirect_word
-                | here_redirection ;
+redirection
+  ::= [ IO_NUMBER ] redir_op WORD ;
 
-redir_op       ::= ">" | ">>" | "<" | "<>" | ">|"
-                | "<&" | ">&" ;
+redir_op
+  ::= ">"
+   | ">>"
+   | "<"
+   | "<>"
+   | ">|"
+   | "<&"
+   | ">&" ;
 
-redirect_word  ::= WORD ;
-
-here_redirection ::= [ IO_NUMBER ] ( "<<" | "<<-" ) here_delim HERE_BODY ;
-
-here_delim       ::= WORD ;
-
-# ------------------------------------------------------------------------------
+# ----------------------------------------------------------------------
 # COMPOUND COMMANDS
 #
 
-compound_command ::= brace_group
-                   | subshell
-                   | if_clause
-                   | while_clause
-                   | until_clause
-                   | for_clause
-                   | case_clause ;
+compound_command
+  ::= brace_group
+   | subshell
+   | if_clause
+   | while_clause
+   | until_clause
+   | for_clause
+   | case_clause ;
 
-brace_group    ::= "{" linebreak compound_list "}" ;
+brace_group
+  ::= "{" linebreak compound_list "}" ;
 
-subshell       ::= "(" linebreak compound_list ")" ;
+subshell
+  ::= "(" linebreak compound_list ")" ;
 
-compound_list  ::= and_or { ( ";" | NEWLINE ) and_or } [ ( ";" | NEWLINE ) ] ;
+compound_list
+  ::= and_or
+      { ( ";" | NEWLINE ) and_or }
+      [ ( ";" | NEWLINE ) ] ;
 
-if_clause      ::= "if"   compound_list "then" compound_list
-                   { "elif" compound_list "then" compound_list }
-                   [ "else" compound_list ]
-                   "fi" ;
-
-while_clause   ::= "while" compound_list "do" compound_list "done" ;
-
-until_clause   ::= "until" compound_list "do" compound_list "done" ;
-
-# POSIX for:
-#   for name [in words...] ; do list ; done
-# bash/zsh extension: C-style for is optional and can be added later.
-
-for_clause     ::= "for" NAME [ linebreak "in" { WORD } ] list_terminator
-                   "do" compound_list "done" ;
-
-list_terminator ::= ";" | NEWLINE ;
-
-case_clause    ::= "case" WORD "in" linebreak { case_item } "esac" ;
-
-case_item      ::= pattern_list ")" linebreak [ compound_list ] case_terminator ;
-
-pattern_list   ::= pattern { "|" pattern } ;
-
-pattern        ::= WORD ;     # treated as patterns; expansion differs (no field 
-                                split)
-
-case_terminator ::= ";;" | ";&" | ";|" | NEWLINE ;
-
-# ------------------------------------------------------------------------------
-# FUNCTIONS (POSIX-ish + bash 'function' keyword as sugar)
+# ----------------------------------------------------------------------
+# CONDITIONALS AND LOOPS
 #
 
-function_definition ::= function_name "(" ")" linebreak function_body
-                      | "function" function_name linebreak function_body ;
+if_clause
+  ::= "if" compound_list "then" compound_list
+      { "elif" compound_list "then" compound_list }
+      [ "else" compound_list ]
+      "fi" ;
 
-function_name  ::= NAME ;
+while_clause
+  ::= "while" compound_list "do" compound_list "done" ;
 
-function_body  ::= compound_command [ redirect_list ] ;
+until_clause
+  ::= "until" compound_list "do" compound_list "done" ;
 
-NAME           ::= <shell name token: [A-Za-z_][A-Za-z0-9_]* > ;
+for_clause
+  ::= "for" NAME
+      [ linebreak "in" { WORD } ]
+      list_terminator
+      "do" compound_list "done" ;
 
-# ------------------------------------------------------------------------------
-# WORD STRUCTURE (LEXICAL, NOT PARSER)
-#
-# WORD is produced by the lexer according to shell quoting rules:
-#   - unquoted text
-#   - single quotes: '...'
-#   - double quotes: "..." (allows $, ``, \, and possibly "$'...'" extensions 
-#     later)
-#   - escapes: \c
-#   - command substitution: $( ... ) or ` ... `
-#   - arithmetic expansion: $(( ... ))
-#   - parameter expansion: $name, ${...}
-#
-# The parser treats WORD as opaque. Expansion happens during evaluation.
-#
-# ------------------------------------------------------------------------------
-# OPTIONAL, CONTROLLED EXTENSIONS (not required for POSIX subset)
-#
-# 1) csh-like foreach:
-# foreach var ( words... )
-#    compound_list
-# end
+list_terminator
+  ::= ";" | NEWLINE ;
+
+# ----------------------------------------------------------------------
+# CASE
 #
 
-foreach_clause ::= "foreach" NAME "(" { WORD } ")" linebreak compound_list "end" ;
+case_clause
+  ::= "case" WORD "in" linebreak
+      { case_item }
+      "esac" ;
 
-# 2) history expansion (csh-like): recognized in the lexer as a pre-expansion phase
-#    unless disabled. Grammar-wise it is just part of WORD.
+case_item
+  ::= pattern_list ")"
+      linebreak
+      [ compound_list ]
+      case_terminator ;
+
+pattern_list
+  ::= pattern { "|" pattern } ;
+
+pattern
+  ::= WORD ;
+
+case_terminator
+  ::= ";;" | ";&" | ";|" | NEWLINE ;
+
+# ----------------------------------------------------------------------
+# FUNCTIONS
 #
-# 3) zsh-style extended globbing/qualifiers:
-#    treated as part of WORD; the glob engine decides meaning if enabled.
+
+function_definition
+  ::= function_name "(" ")" linebreak function_body
+   | "function" function_name linebreak function_body ;
+
+function_name
+  ::= NAME ;
+
+function_body
+  ::= compound_command [ redirect_list ] ;
+
+NAME
+  ::= <shell identifier: [A-Za-z_][A-Za-z0-9_]* > ;
+
+# ----------------------------------------------------------------------
+# WORD (LEXICAL, NOT PARSED)
 #
-# 4) process substitution (bash/zsh):
-#    <( list ) and >( list ) treated as WORD forms with special expansion.
+# WORD structure is defined by the lexer.
+# The parser treats WORD as an atomic token.
 #
-# End of grammar.txt
+# Triple-quoted strings replace POSIX here-documents.
+# Backticks follow bash/zsh-compatible semantics.
+#
+# ----------------------------------------------------------------------
+# END OF GRAMMAR
+#
 
