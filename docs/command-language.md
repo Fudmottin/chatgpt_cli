@@ -408,12 +408,52 @@ defined in `grammar.txt`.)
 
 ---
 
-## 9. Expansion and execution (out of scope)
+## 9. Expansion and execution
 
 This document defines **syntax only**.
+After parsing, clanker performs a sequence of **expansion and execution
+steps** before running commands.
 
-Expansion (parameter, command substitution, globbing, brace expansion),
-redirection semantics, and execution order are specified elsewhere.
+The exact order of expansions is defined by the execution model.
+
+### 9.1 Brace expansion
+
+Brace expansion is an execution-phase transformation applied to `WORD` tokens.
+
+In brace expansions:
+
+* Commas separate elements.
+* Whitespace surrounding commas is ignored.
+* Whitespace within an element is preserved.
+
+Brace expansion produces zero or more `WORD`s, replacing the original `WORD`.
+
+Examples:
+
+```
+{foo,bar,baz} → foo bar baz
+{foo, bar, baz} → foo bar baz
+{foo,bar baz} → foo "bar baz"
+{foo, bar baz} → foo "bar baz"
+
+```
+
+
+Brace expansion operates on the textual contents of a `WORD`.
+Whether brace expansion is applied is an execution-phase decision.
+
+### 9.2 Other expansions
+
+The following expansions are defined by the execution model and are not
+specified here:
+
+* parameter expansion
+* command substitution
+* globbing
+* field splitting
+* redirection processing
+
+Their semantics are specified separately.
 
 ---
 
@@ -428,7 +468,6 @@ When faced with a choice between strict POSIX behavior and a model that:
 * behaves consistently with modern languages,
 
 clanker prefers the latter.
-```
 
 ---
 

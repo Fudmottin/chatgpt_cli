@@ -38,6 +38,10 @@
 #
 # 4) Operators are recognized even when adjacent to WORDs.
 #
+# 5) Brace expansion is an execution-phase transformation. In brace
+# expansions, commas separate elements; whitespace around commas is ignored;
+# whitespace within an element is preserved.
+#
 # ----------------------------------------------------------------------
 # TOKENS
 #
