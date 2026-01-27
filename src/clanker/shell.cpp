@@ -1,10 +1,10 @@
 // src/clanker/shell.cpp
-
 #include <fstream>
 #include <iostream>
 #include <sstream>
 
 #include "clanker/builtins.h"
+#include "clanker/exec_policy_default.h"
 #include "clanker/executor.h"
 #include "clanker/line_editor.h"
 #include "clanker/parser.h"
@@ -51,7 +51,10 @@ int Shell::run() {
 
    LineEditor editor;
    Builtins builtins = make_builtins();
-   Executor exec{std::move(builtins), root_, &cwd_, &oldpwd_};
+
+   DefaultExecPolicy policy{root_};
+   Executor exec{std::move(builtins), policy, &cwd_, &oldpwd_};
+
    Parser parser;
 
    std::string buffer;
@@ -96,7 +99,10 @@ int Shell::run() {
 
 int Shell::run_string(std::string_view script_text) {
    Builtins builtins = make_builtins();
-   Executor exec(std::move(builtins), root_, &cwd_, &oldpwd_);
+
+   DefaultExecPolicy policy{root_};
+   Executor exec{std::move(builtins), policy, &cwd_, &oldpwd_};
+
    Parser parser;
 
    int last_status = 0;
