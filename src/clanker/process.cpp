@@ -1,6 +1,7 @@
 // src/clanker/process.cpp
 
 #include <cerrno>
+#include <span>
 #include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -31,14 +32,14 @@ std::vector<char*> to_cargv(const std::vector<std::string>& argv) {
 } // namespace
 
 int spawn_external(const std::vector<std::string>& argv, int stdin_fd,
-                   int stdout_fd, const std::vector<int>& close_fds) {
+                   int stdout_fd, std::span<const int> close_fds) {
    if (argv.empty()) return -EINVAL;
 
    posix_spawn_file_actions_t actions;
    posix_spawn_file_actions_init(&actions);
 
    // Close requested fds in the child (before exec).
-   for (int fd : close_fds) {
+   for (const int fd : close_fds) {
       if (fd >= 0) posix_spawn_file_actions_addclose(&actions, fd);
    }
 
@@ -86,7 +87,8 @@ int run_external_pipeline(const std::vector<std::vector<std::string>>& stages) {
       const int in_fd = prev_read;
       const int out_fd = last ? -1 : pipefd[1];
 
-      const int pid_or_err = spawn_external(stages[i], in_fd, out_fd, {});
+      const int pid_or_err =
+         spawn_external(stages[i], in_fd, out_fd, std::span<const int>{});
 
       if (out_fd != -1) ::close(out_fd);
       if (in_fd != -1) ::close(in_fd);
