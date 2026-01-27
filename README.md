@@ -1,20 +1,36 @@
 # clanker
 
-Some serious wishful thinking going on here.
+`clanker` is an experimental, POSIX-inspired shell written in modern C++23.
+Its focus is **model-agnostic LLM orchestration**: treating LLM backends as
+composable tools, similar to ordinary shell commands.
 
+> Note: This README is informational. The authoritative language specification
+> lives in `docs/`.
 
-Clanker is intended to be a shell like TUI for LLMs. The special feature is that
-clanker will allow chaining models together like they are any other program. It
-also provides a uniform front end for different models from OpenAI, Anthropic,
-etc. In short, it is model agnostic.
+## Status
 
+Early development. Parsing/execution is being built incrementally with unit
+tests and a strict separation of concerns (lexer → parser/AST → executor).
 
-Some models don't output text. Instead they will output images, video, audo,
-etc. It will be up to the user to know what to expect, but perhaps clanker will
-be able to help there as well. The assumed interface to an LLM is an HTTPS POST
-request with a JSON body. The asumed rsponse includes a standard response code
-and JSON body. Where MIME types are used, clanker should be able to properly
-deal with the response in the appropriate way, ie converting base64 encoded data
-into binary form for directing to a file or another process like ffmpeg,
-ImageMagick, etc.
+## Authoritative documentation
+
+- `docs/grammar.txt` — grammar truth (EBNF-ish)
+- `docs/command-language.md` — human-readable command language spec
+- `docs/current-implementation-status.md` — what works today
+- `docs/architecture.md` — architecture and responsibilities
+- `docs/built-ins.md` — builtin command intent and compatibility goals
+
+## Build (CMake)
+
+Typical out-of-source build:
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+ctest --test-dir build
+```
+
+## License
+
+MIT: see LICENSE
 
