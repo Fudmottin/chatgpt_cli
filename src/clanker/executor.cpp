@@ -21,6 +21,13 @@ bool is_builtin(const Builtins& b, const SimpleCommand& st) {
    return !st.argv.empty() && b.find(st.argv.front()).has_value();
 }
 
+static int deny_privilege_drift() {
+   fd_write_all(
+      STDERR_FILENO,
+      "clanker: security: privilege change detected; refusing to execute\n");
+   return 125;
+}
+
 class UniqueFd {
  public:
    UniqueFd() = default;
@@ -71,14 +78,17 @@ int make_pipe(UniqueFd& r, UniqueFd& w) {
 } // namespace
 
 Executor::Executor(Builtins builtins, const ExecPolicy& policy,
-                   std::filesystem::path* cwd, std::filesystem::path* oldpwd)
+                   std::filesystem::path* cwd, std::filesystem::path* oldpwd,
+                   SecurityPolicy sec)
    : builtins_(std::move(builtins))
    , policy_(policy)
+   , sec_(sec)
    , cwd_(cwd)
    , oldpwd_(oldpwd) {}
 
 int Executor::run_simple(const SimpleCommand& cmd) {
    if (cmd.argv.empty()) return 0;
+   if (!sec_.identity_unchanged()) return deny_privilege_drift();
 
    if (auto fn = builtins_.find(cmd.argv.front())) {
       BuiltinContext ctx{.root = policy_.root(),
@@ -122,6 +132,9 @@ int Executor::run_simple(const SimpleCommand& cmd) {
 
 int Executor::run_pipeline_builtin_first(const SimpleCommand& first,
                                          const Pipeline& pipeline) {
+
+   if (!sec_.identity_unchanged()) return deny_privilege_drift();
+
    // Pipe from builtin stdout -> stdin of the external pipeline.
    UniqueFd read_end;
    UniqueFd write_end;
@@ -222,6 +235,7 @@ int Executor::run_pipeline_builtin_first(const SimpleCommand& first,
 
 int Executor::run_pipeline_all_external(const Pipeline& pipeline) {
    if (pipeline.stages.empty()) return 0;
+   if (!sec_.identity_unchanged()) return deny_privilege_drift();
 
    // Validate and policy-check first (fail fast, no partial execution).
    for (const auto& st : pipeline.stages) {

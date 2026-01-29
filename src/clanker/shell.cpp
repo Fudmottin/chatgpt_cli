@@ -47,13 +47,15 @@ Shell::Shell() {
 }
 
 int Shell::run() {
+   const auto sec = SecurityPolicy::capture_startup_identity();
+
    install_signal_handlers();
 
    LineEditor editor;
    Builtins builtins = make_builtins();
 
    DefaultExecPolicy policy{root_};
-   Executor exec{std::move(builtins), policy, &cwd_, &oldpwd_};
+   Executor exec{std::move(builtins), policy, &cwd_, &oldpwd_, sec};
 
    Parser parser;
 
@@ -101,7 +103,8 @@ int Shell::run_string(std::string_view script_text) {
    Builtins builtins = make_builtins();
 
    DefaultExecPolicy policy{root_};
-   Executor exec{std::move(builtins), policy, &cwd_, &oldpwd_};
+   const auto sec = SecurityPolicy::capture_startup_identity();
+   Executor exec{std::move(builtins), policy, &cwd_, &oldpwd_, sec};
 
    Parser parser;
 

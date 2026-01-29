@@ -4,6 +4,7 @@
 #include <string_view>
 
 #include "clanker/shell.h"
+#include "clanker/security_policy.h"
 
 namespace {
 
@@ -18,6 +19,12 @@ void usage(std::ostream& os, std::string_view prog) {
 
 int main(int argc, char** argv) {
    try {
+      const auto sec = clanker::SecurityPolicy::capture_startup_identity();
+      if (const int ec = sec.refuse_root_start(); ec != 0) {
+         std::cerr << "clanker: security: refusing to run as root\n";
+         return ec;
+      }
+
       clanker::Shell shell;
 
       if (argc == 1) {
