@@ -2,56 +2,59 @@
 
 This document defines the **command language accepted by the clanker shell**.
 
-It is the *normative* specification of the language.  
-The grammar is inspired by POSIX shells (`sh`, `bash`, `zsh`), but POSIX
-compliance is a **guide**, not a constraint. Where trade-offs exist,
+It is the *normative* specification of clanker’s syntax and lexical structure.
+Execution semantics (expansion, control flow, process behavior) are defined
+separately in `execution-model.md`.
+
+The language is inspired by POSIX shells (`sh`, `bash`, `zsh`), but POSIX
+compatibility is a **reference**, not a constraint. Where trade-offs exist,
 clanker prefers:
 
-* minimal surprise for programmers,
 * deterministic parsing,
+* minimal surprise for programmers,
 * lexical rules that scale as the language grows.
 
-The reference grammar is expressed in EBNF style and is derived from
-`docs/grammar.txt`.
+The reference grammar is expressed in EBNF and derived from `docs/grammar.txt`.
 
 ---
 
 ## 1. Design principles
 
-* Familiar shell syntax for experienced users
-* C-like whitespace handling
-* Deterministic, lexer-driven parsing
-* Clear separation of:
-  * **lexing & parsing** (defined here)
-  * **expansion & execution** (defined elsewhere)
-* Features are added only when their semantics are fully specified
+* Familiar shell-like syntax
+* Lexer-driven, deterministic parsing
+* Clear separation of concerns:
+  * **lexing & parsing** — defined here
+  * **expansion & execution** — defined elsewhere
+* Syntax is accepted only when its semantics are explicitly specified
+* Incomplete input is detected precisely and recoverably
 
 ---
 
 ## 2. Input model
 
 * Input is read as a sequence of characters
-* Commands are executed only when the input is **syntactically complete**
+* Commands are executed only when input is **syntactically complete**
 * While input is incomplete, clanker continues reading additional lines
 * Newlines inside a logical command are treated as whitespace
 
 This applies equally to:
+
 * interactive REPL input
-* batch/script input
+* batch or script input
 
 ---
 
-## 3. Whitespace (C-like rule)
+## 3. Whitespace
 
-Whitespace is treated **as in the C programming language**.
+Whitespace handling follows a **C-like rule**.
 
 ### 3.1 General rule
 
 * Outside of word constructs, whitespace separates tokens
-* Inside a word construct, whitespace is **ordinary data**
-* No construct requires “special spacing” to parse correctly
+* Inside a word construct, whitespace is ordinary data
+* No construct relies on special spacing to parse correctly
 
-Therefore, the following commands **must be lexically equivalent**:
+Therefore, the following commands are lexically equivalent:
 
 ```
 
@@ -72,7 +75,7 @@ mkdir -p test/{foo,bar,baz}
 
 ## 4. Comments
 
-* `#` begins a comment
+* `#` begins a comment when it appears at a token boundary
 * A comment extends to the end of the physical line
 * A `#` inside a word construct is literal
 * Comments are not recognized inside triple-quoted strings
@@ -81,41 +84,29 @@ mkdir -p test/{foo,bar,baz}
 
 ## 5. Tokens
 
-### 5.1 Operators (longest match wins)
+### 5.1 Operators
+
+Operators are recognized using a **longest-match-wins** rule.
+
+Currently recognized operators include:
 
 ```
 
-&&  ||  >>  <<
-|&  |
-;;  ;&  ;|
-<>  <&  >&  >|
-
-> <
-> ;   &
-> (   )   {   }
+|    &&    ||    &    ;
 
 ```
 
-### 5.2 Reserved words (contextual)
-
-Reserved words are recognized only in *command position*:
-
-```
-
-if then elif else fi
-for in do done
-while until case esac
-function select
-time
-
-```
+Additional operators may be introduced only when their semantics are fully
+specified and implemented.
 
 ---
 
 ## 6. WORD tokens (lexical)
 
-The parser treats `WORD` as an **opaque token**.  
-All structure described below is handled by the **lexer**, not the parser.
+The parser treats `WORD` as an **opaque lexical unit**.
+
+All internal structure described below is handled entirely by the **lexer**.
+The parser never inspects the contents of a `WORD`.
 
 A `WORD` may be composed of any mixture of the following constructs.
 
@@ -150,20 +141,22 @@ Any character not otherwise special contributes directly to the word.
 
 ```
 
+Rules:
+
 * Whitespace is preserved
-* Escape sequences are recognized:
+* Escape sequences recognized:
   * `\"` → `"`
   * `\\` → `\`
   * `\n` → newline
   * `\<newline>` → line continuation
-* Other escapes are errors
+* Other escape sequences are errors
 * May span multiple lines
 
 ---
 
 ### 6.4 Triple-quoted strings (Python-style)
 
-Triple-quoted strings are supported to minimize surprise for programmers
+Triple-quoted strings are supported to reduce surprise for programmers
 familiar with Python.
 
 ```
@@ -183,7 +176,7 @@ Rules:
 
 Triple-quoted strings produce a single `WORD`.
 
-This feature replaces the need for POSIX here-documents.
+This feature replaces POSIX here-documents.
 
 ---
 
@@ -194,7 +187,7 @@ Outside of quotes:
 * `\c` escapes the next character
 * `\<newline>` escapes the newline entirely
 
-Inside double quotes, escapes follow the rules in §6.3.
+Inside double quotes, escapes follow §6.3.
 
 ---
 
@@ -211,7 +204,7 @@ A brace-group is a **word-level construct**:
 Rules:
 
 * Brace-groups may nest
-* Whitespace inside a brace-group is **not a token separator**
+* Whitespace inside a brace-group is not a token separator
 * Commas and whitespace are ordinary characters
 * Newlines inside a brace-group are treated as whitespace
 
@@ -226,16 +219,16 @@ Therefore:
 
 are lexically identical.
 
-Whether brace-groups participate in **expansion** is an execution-phase
-decision and is not defined here.
+Whether brace-groups participate in **brace expansion** is defined by the
+execution model and is not a parsing concern.
 
 ---
 
 ### 6.7 Command substitution
 
-Command substitution produces a word whose value is the output of a command.
+Command substitution produces a `WORD` whose value is the output of a command.
 
-Two forms are supported.
+Two forms are recognized lexically.
 
 #### 6.7.1 Modern form
 
@@ -246,10 +239,10 @@ $( list )
 ```
 
 * Nesting is allowed
-* Uses full shell grammar inside
+* Full shell grammar is used inside
 * Preferred form
 
-#### 6.7.2 Backticks (legacy, but supported)
+#### 6.7.2 Backticks (legacy)
 
 ```
 
@@ -257,13 +250,14 @@ $( list )
 
 ```
 
-Rules follow the more flexible behavior found in `zsh` where it differs
-from `bash`:
+Rules follow `zsh`-like behavior:
 
 * Backticks may nest when escaped
 * Backslash escaping applies inside backticks
 * Newlines are allowed
-* Intended for short, REPL-friendly commands
+
+Command substitution is lexically recognized; execution semantics are defined
+by the execution model.
 
 ---
 
@@ -280,166 +274,100 @@ Input is considered **incomplete** if any of the following hold:
   * `&&`
 * A trailing backslash escapes the newline
 
-While incomplete, clanker continues reading input and presents a
-secondary prompt.
+While incomplete, clanker continues reading input and presents a secondary
+prompt.
 
 ---
 
 ## 8. Grammar (EBNF)
+
+This grammar describes **only the subset of shell syntax currently accepted
+by clanker**.
 
 ### 8.1 Start symbols
 
 ```
 
 program
-::= { complete_command terminator }
-[ complete_command ]
+::= { command terminator }
+[ command ]
 [ terminator ]
 EOF ;
 
 terminator
 ::= ";" | NEWLINE ;
 
-complete_command
-::= list ;
-
 ```
 
 ---
 
-### 8.2 Lists and pipelines
+### 8.2 Commands and pipelines
 
-Precedence (tightest → loosest):
+Operator precedence (tightest → loosest):
 
-1. simple command elements
-2. pipeline
-3. logical AND / OR
-4. sequential list
-
-```
-
-list
-::= and_or { ( ";" | "&" | NEWLINE ) and_or }
-[ ( ";" | "&" | NEWLINE ) ] ;
-
-and_or
-::= pipeline { ( "&&" | "||" ) linebreak pipeline } ;
-
-pipeline
-::= [ "!" ] pipe_sequence ;
-
-pipe_sequence
-::= command { ( "|" | "|&" ) linebreak command } ;
-
-linebreak
-::= { NEWLINE } ;
-
-```
-
----
-
-### 8.3 Commands
+1. simple command
+2. pipeline (`|`)
+3. logical AND / OR (`&&`, `||`)
+4. sequential list (`;`, newline)
 
 ```
 
 command
-::= simple_command
-| compound_command [ redirect_list ]
-| function_definition ;
+::= and_or ;
+
+and_or
+::= pipeline { ( "&&" | "||" ) pipeline } ;
+
+pipeline
+::= simple_command { "|" simple_command } ;
 
 ```
 
 ---
 
-### 8.4 Simple commands
+### 8.3 Simple commands
 
 ```
 
 simple_command
-::= { prefix } [ command_name { element } ] ;
-
-prefix
-::= ASSIGNMENT_WORD | redirection ;
-
-element
-::= WORD | redirection ;
-
-command_name
-::= WORD ;
-
-redirect_list
-::= { redirection } ;
+::= WORD { WORD } ;
 
 ```
 
----
-
-### 8.5 Redirections
-
-```
-
-redirection
-::= [ IO_NUMBER ] redir_op WORD ;
-
-redir_op
-::= ">" | ">>" | "<" | "<>" | ">|" | "<&" | ">&" ;
-
-```
-
----
-
-### 8.6 Compound commands
-
-```
-
-compound_command
-::= brace_group
-| subshell
-| if_clause
-| while_clause
-| until_clause
-| for_clause
-| case_clause ;
-
-```
-
-(Definitions follow POSIX shape; details omitted here for brevity and
-defined in `grammar.txt`.)
+Redirections, assignments, and compound commands are **not yet part of the
+accepted grammar** and are introduced only when their semantics are specified
+and implemented.
 
 ---
 
 ## 9. Expansion and execution
 
 This document defines **syntax only**.
-After parsing, clanker performs a sequence of **expansion and execution
-steps** before running commands.
 
-The exact order of expansions is defined by the execution model.
+After parsing, clanker performs a sequence of **expansion and execution**
+steps defined by the execution model.
 
 ### 9.1 Brace expansion
 
-Brace expansion is an execution-phase transformation applied to `WORD` tokens.
+Brace expansion is an execution-phase transformation applied to `WORD`s.
 
-In brace expansions:
+Rules:
 
-* Commas separate elements.
-* Whitespace surrounding commas is ignored.
-* Whitespace within an element is preserved.
-
-Brace expansion produces zero or more `WORD`s, replacing the original `WORD`.
+* Commas separate elements
+* Whitespace surrounding commas is ignored
+* Whitespace within an element is preserved
+* Expansion preserves left-to-right order
 
 Examples:
 
 ```
-{foo,bar,baz} → foo bar baz
-{foo, bar, baz} → foo bar baz
-{foo,bar baz} → foo "bar baz"
-{foo, bar baz} → foo "bar baz"
+
+{foo,bar,baz}     → foo  bar  baz
+{foo, bar, baz}   → foo  bar  baz
+{foo,bar baz}     → foo  "bar baz"
 
 ```
 
-
-Brace expansion operates on the textual contents of a `WORD`.
 Whether brace expansion is applied is an execution-phase decision.
 
 ### 9.2 Other expansions
@@ -448,12 +376,10 @@ The following expansions are defined by the execution model and are not
 specified here:
 
 * parameter expansion
-* command substitution
+* command substitution execution
 * globbing
 * field splitting
 * redirection processing
-
-Their semantics are specified separately.
 
 ---
 
@@ -465,9 +391,10 @@ When faced with a choice between strict POSIX behavior and a model that:
 
 * reduces cognitive load,
 * supports multiline structured input,
-* behaves consistently with modern languages,
+* behaves predictably and deterministically,
 
 clanker prefers the latter.
 
 ---
+
 

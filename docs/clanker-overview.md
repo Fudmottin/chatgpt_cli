@@ -1,8 +1,9 @@
 # clanker — overview
 
-`clanker` is an interactive, POSIX-style shell written in modern C++ (C++23).
-Its primary purpose is to orchestrate one or more Large Language Models (LLMs)
-for tasks such as code generation.
+`clanker` is an interactive, a small, shell-like command interpreter inspired
+by POSIX shells written in modern C++ (C++23). Its primary purpose is to
+orchestrate one or more Large Language Models (LLMs) for tasks such as code
+generation.
 
 The shell provides a controlled execution environment with built-in commands,
 external command execution, and LLM-aware built-in commands.
@@ -33,9 +34,11 @@ external command execution, and LLM-aware built-in commands.
 ## Execution Environment
 
 * The shell’s current working directory is treated as the logical root
-* `clanker` itself must not read or write files outside this root
+  by convention
+* Stronger filesystem confinement may be introduced later
 * External commands may be executed without restriction
-* Environment variables may be inherited but not modified globally
+* Environment variables are inherited by default. Mutation semantics are
+  defined by clanker built-ins
 
 ---
 
@@ -72,7 +75,8 @@ clanker >
 
 * LLM functionality is exposed via built-in commands (e.g. `prompt`, `ask`)
 * LLM commands participate in normal shell parsing and composition
-* They may appear in pipelines and command lists
+* Built-in and LLM commands may appear in pipelines, subject to execution
+  constraints defined in the execution model
 * Example:
 
 ```
@@ -103,7 +107,8 @@ prompt "Write a C++ function to tokenize shell input."
 
 ## Concurrency
 
-* The shell may perform asynchronous operations
+* Concurrency is limited and explicit. Background execution and asynchronous 
+  behavior are documented separately
 * Behavior should align with traditional POSIX shells where practical
 * Concurrency must be explicit and well-documented
 
@@ -111,7 +116,7 @@ prompt "Write a C++ function to tokenize shell input."
 
 ## Coding Style
 
-* Follow standard C++ and Boost naming conventions
+* Follow standard C++ naming conventions
 * Prefer C++23 language features where they improve clarity
 * Code should favor correctness and clarity over cleverness
 

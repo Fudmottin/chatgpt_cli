@@ -3,12 +3,18 @@
 # clanker shell grammar
 #
 # This grammar defines the syntactic structure of the clanker command
-# language.  Lexical structure (WORD formation, quoting, brace-groups,
-# command substitution, etc.) is handled entirely by the lexer.
+# language as it is currently accepted.
 #
-# POSIX shell grammar is a guide, not a constraint.
+# Lexical structure (WORD formation, quoting, brace-groups, command
+# substitution, escapes, etc.) is handled entirely by the lexer.
 #
-# Notation (EBNF-ish):
+# POSIX shell grammar is an inspiration, not a constraint.
+# Grammar productions are added only when their semantics are fully
+# specified and implemented.
+#
+# ----------------------------------------------------------------------
+# NOTATION (EBNF-ish)
+#
 #   A B        concatenation
 #   A | B      alternation
 #   [A]        optional
@@ -20,8 +26,7 @@
 #
 # 1) Whitespace is treated as in C.
 #    Outside of WORD constructs, whitespace separates tokens.
-#    Inside WORD constructs, whitespace is literal and does not split
-#    tokens.
+#    Inside WORD constructs, whitespace is literal.
 #
 # 2) NEWLINE is a command terminator like ';' unless the parser is waiting
 #    for completion (open construct, trailing operator, etc.).
@@ -38,231 +43,94 @@
 #
 # 4) Operators are recognized even when adjacent to WORDs.
 #
-# 5) Brace expansion is an execution-phase transformation. In brace
-# expansions, commas separate elements; whitespace around commas is ignored;
-# whitespace within an element is preserved.
+# 5) Brace expansion is an execution-phase transformation.
+#    Grammar does not assign semantics to brace-groups.
 #
 # ----------------------------------------------------------------------
 # TOKENS
 #
 # Operators (longest match wins):
-#   "&&" "||"
-#   "|&" "|"
-#   ">" "<" ">>"
-#   ";" "&"
-#   "(" ")" "{" "}"
+#   "&&"  "||"
+#   "|"
+#   ";"   "&"
 #
-# Reserved words (recognized only in command position):
-#   if then elif else fi
-#   for in do done
-#   while until case esac
-#   function select
-#   time
-#
-# Word-like tokens:
+# Other tokens:
 #   WORD
-#   ASSIGNMENT_WORD   NAME '=' WORD?
-#   IO_NUMBER         [0-9]+ immediately before redirection
+#   NEWLINE
 #
 # ----------------------------------------------------------------------
-# START SYMBOLS
+# START SYMBOL
 #
 
 program
-  ::= { complete_command terminator }
-      [ complete_command ]
+  ::= { command terminator }
+      [ command ]
       [ terminator ]
       EOF ;
 
 terminator
   ::= ";" | NEWLINE ;
 
-complete_command
-  ::= list ;
-
 EOF
   ::= <end of input> ;
 
 # ----------------------------------------------------------------------
-# LISTS, LOGICAL OPERATORS, PIPELINES
+# COMMAND STRUCTURE
 #
-# Precedence (tightest → loosest):
-#   1) simple command elements
-#   2) pipeline
-#   3) && ||
-#   4) sequential list (; & NEWLINE)
-#
-
-list
-  ::= and_or
-      { ( ";" | "&" | NEWLINE ) and_or }
-      [ ( ";" | "&" | NEWLINE ) ] ;
-
-and_or
-  ::= pipeline
-      { ( "&&" | "||" ) linebreak pipeline } ;
-
-pipeline
-  ::= [ "!" ] pipe_sequence ;
-
-pipe_sequence
-  ::= command
-      { ( "|" | "|&" ) linebreak command } ;
-
-linebreak
-  ::= { NEWLINE } ;
-
-# ----------------------------------------------------------------------
-# COMMANDS
+# Operator precedence (tightest → loosest):
+#   1) simple command
+#   2) pipeline        |
+#   3) logical AND/OR  && ||
+#   4) sequential list ; NEWLINE
 #
 
 command
+  ::= and_or ;
+
+and_or
+  ::= pipeline
+      { ( "&&" | "||" ) pipeline } ;
+
+pipeline
   ::= simple_command
-   | compound_command [ redirect_list ]
-   | function_definition ;
+      { "|" simple_command } ;
 
 # ----------------------------------------------------------------------
 # SIMPLE COMMANDS
 #
-# POSIX-shaped: assignments, words, and redirections may appear in
-# nearly any order.
+# A simple command is a sequence of WORDs.
+# Redirections, assignments, compound commands, and functions are
+# intentionally excluded at this stage.
 #
 
 simple_command
-  ::= { prefix } [ command_name { element } ] ;
-
-prefix
-  ::= ASSIGNMENT_WORD
-   | redirection ;
-
-element
-  ::= WORD
-   | redirection ;
-
-command_name
-  ::= WORD ;
-
-redirect_list
-  ::= { redirection } ;
+  ::= WORD { WORD } ;
 
 # ----------------------------------------------------------------------
-# REDIRECTIONS
+# PARSE COMPLETENESS
 #
-# Targets are WORDs; expansion semantics are defined elsewhere.
+# Input is incomplete if:
+#   - an open quote, brace-group, or command substitution is not closed
+#   - the input ends with '|', '&&', or '||'
+#   - a trailing backslash escapes the newline
 #
-
-redirection
-  ::= [ IO_NUMBER ] redir_op WORD ;
-
-redir_op
-  ::= ">"
-   | ">>"
-   | "<"
-   | "<>"
-   | ">|"
-   | "<&"
-   | ">&" ;
-
+# Incomplete input causes the parser to request more input.
+#
 # ----------------------------------------------------------------------
-# COMPOUND COMMANDS
+# EXTENSION POLICY
 #
-
-compound_command
-  ::= brace_group
-   | subshell
-   | if_clause
-   | while_clause
-   | until_clause
-   | for_clause
-   | case_clause ;
-
-brace_group
-  ::= "{" linebreak compound_list "}" ;
-
-subshell
-  ::= "(" linebreak compound_list ")" ;
-
-compound_list
-  ::= and_or
-      { ( ";" | NEWLINE ) and_or }
-      [ ( ";" | NEWLINE ) ] ;
-
-# ----------------------------------------------------------------------
-# CONDITIONALS AND LOOPS
+# Grammar productions are added only when:
+#   - their syntax is fully specified
+#   - their execution semantics are documented
+#   - they are implemented and tested
 #
-
-if_clause
-  ::= "if" compound_list "then" compound_list
-      { "elif" compound_list "then" compound_list }
-      [ "else" compound_list ]
-      "fi" ;
-
-while_clause
-  ::= "while" compound_list "do" compound_list "done" ;
-
-until_clause
-  ::= "until" compound_list "do" compound_list "done" ;
-
-for_clause
-  ::= "for" NAME
-      [ linebreak "in" { WORD } ]
-      list_terminator
-      "do" compound_list "done" ;
-
-list_terminator
-  ::= ";" | NEWLINE ;
-
-# ----------------------------------------------------------------------
-# CASE
-#
-
-case_clause
-  ::= "case" WORD "in" linebreak
-      { case_item }
-      "esac" ;
-
-case_item
-  ::= pattern_list ")"
-      linebreak
-      [ compound_list ]
-      case_terminator ;
-
-pattern_list
-  ::= pattern { "|" pattern } ;
-
-pattern
-  ::= WORD ;
-
-case_terminator
-  ::= ";;" | ";&" | ";|" | NEWLINE ;
-
-# ----------------------------------------------------------------------
-# FUNCTIONS
-#
-
-function_definition
-  ::= function_name "(" ")" linebreak function_body
-   | "function" function_name linebreak function_body ;
-
-function_name
-  ::= NAME ;
-
-function_body
-  ::= compound_command [ redirect_list ] ;
-
-NAME
-  ::= <shell identifier: [A-Za-z_][A-Za-z0-9_]* > ;
-
-# ----------------------------------------------------------------------
-# WORD (LEXICAL, NOT PARSED)
-#
-# WORD structure is defined by the lexer.
-# The parser treats WORD as an atomic token.
-#
-# Triple-quoted strings replace POSIX here-documents.
-# Backticks follow bash/zsh-compatible semantics.
+# Planned extensions (not yet grammatical):
+#   - background execution ('&')
+#   - redirections
+#   - assignments
+#   - compound commands
+#   - functions
 #
 # ----------------------------------------------------------------------
 # END OF GRAMMAR
-#
 

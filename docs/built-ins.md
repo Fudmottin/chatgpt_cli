@@ -1,42 +1,55 @@
 # clanker — built-in commands
 
-This document defines clanker built-in commands.
+This document defines clanker built-in commands and their intended behavior.
 
-When a command name and purpose matches a bash built-in, clanker shall provide
-compatible behavior and exit status, unless explicitly noted here.
+When a command name and purpose matches a bash built-in, clanker aims to provide
+compatible behavior and exit status unless explicitly noted otherwise.
 
-Built-ins are grouped by priority and purpose. Not all bash built-ins are
-required for the initial implementation.
+This document describes *intended* built-ins. Availability and completeness
+vary by implementation phase.
 
 ---
 
 ## Conventions
 
-* Exit status: 0 on success, non-zero on failure (bash-compatible where applicable)
-* Built-ins execute within the shell process (they may affect shell state)
-* External commands are executed via fork/exec (or equivalent)
+* Exit status: `0` on success, non-zero on failure
+* Built-ins execute within the shell process
+* Built-ins may mutate shell state
+* External commands execute in child processes
 
 ---
 
-## Built-ins in Pipelines
+## Built-ins and Pipelines
 
-Built-ins shall be implemented as stream-oriented commands:
-* they read from stdin when applicable
-* they write normal output to stdout and diagnostics to stderr
+Built-ins are designed to be stream-oriented:
+
+* they may read from stdin
+* they write normal output to stdout
+* they write diagnostics to stderr
 * they return an exit status
 
-This allows built-ins to appear in pipelines similarly to external commands.
+**Current implementation constraint:**
+
+* A built-in command is permitted only in the **first stage** of a pipeline.
+* A built-in appearing in any later pipeline stage is a deterministic error.
+
+This restriction may be relaxed in later versions once execution semantics are
+fully specified and tested.
 
 ---
 
 ## When to Prefer an External Command
 
 Prefer an external command when the command:
+
 * does not need to mutate shell state, and
 * is primarily a data transformer.
 
-Prefer a built-in when the command must mutate shell state or must be available
-without spawning a process.
+Prefer a built-in when the command:
+
+* must mutate shell state (e.g. `cd`), or
+* must be available without spawning a process, or
+* participates in clanker-specific orchestration (e.g. LLM commands).
 
 ---
 
@@ -49,10 +62,9 @@ These are sufficient for a usable interactive shell and for orchestrating LLMs.
 * `exit [n]`  
   Exit clanker with status `n` (default: last command status).
 
-* `logout`  
-  Exit a login shell (bash-compatible; may be an alias of `exit` depending on mode).
+---
 
-### Navigation and environment
+### Navigation
 
 * `cd [dir]`  
   Change the current working directory.
@@ -60,11 +72,7 @@ These are sufficient for a usable interactive shell and for orchestrating LLMs.
 * `pwd [-LP]`  
   Print the current working directory.
 
-* `export [name[=value] ...]`  
-  Set environment variables for subsequently executed programs.
-
-* `unset [-f] [-v] name...`  
-  Remove variables or functions from the environment/shell.
+---
 
 ### Introspection and help
 
@@ -72,28 +80,16 @@ These are sufficient for a usable interactive shell and for orchestrating LLMs.
   Describe built-ins and their usage.
 
 * `type [-a] name...`  
-  Describe how a name would be interpreted (built-in, external, etc.).
-
-### Job control (optional early; common later)
-
-* `jobs [-lpnrs] [jobspec...]`  
-  List active jobs.
-
-* `fg [jobspec]`  
-  Bring a job to the foreground.
-
-* `bg [jobspec]`  
-  Resume a job in the background.
+  Describe how a name would be interpreted (built-in or external).
 
 ---
 
 ## LLM built-ins (Phase 1)
 
-These are clanker-specific commands for orchestration. During early development
-they may be stubbed.
+These commands are clanker-specific and may be stubbed during early development.
 
 * `models`  
-  List available configured model backends and model identifiers.
+  List available configured model backends and identifiers.
 
 * `use <backend> [model=<id>]`  
   Select the default backend/model for subsequent LLM commands.
@@ -102,13 +98,13 @@ they may be stubbed.
   Send `<text...>` to the default model and print the response.
 
 * `ask <backend> <text...>`  
-  Send `<text...>` to the specified backend (e.g. `ask openai "..."`).
+  Send `<text...>` to the specified backend.
 
 * `system <text...>`  
-  Set or clear a session/system instruction for subsequent LLM calls.
+  Set or clear a system instruction for subsequent LLM calls.
 
 * `context add <path>`  
-  Add a file or directory (within clanker root) to the LLM context set.
+  Add a file or directory to the LLM context set.
 
 * `context rm <path>`  
   Remove a path from the context set.
@@ -120,154 +116,111 @@ they may be stubbed.
   Clear all selected context inputs.
 
 * `pipe`  
-  Read stdin fully and treat it as the prompt input (enables pipelines).
+  Read stdin fully and treat it as prompt input.
 
   Example:
-  `cat foo.cpp | pipe | prompt "Refactor this code."`
+```
 
-* `save <path>`  
-  Save the most recent LLM response to `<path>` (within clanker root).
+cat foo.cpp | pipe | prompt "Refactor this code."
+
+```
 
 * `last`  
-  Print the most recent LLM response (or the last command’s captured output).
+Print the most recent LLM response or captured output.
+
+* `save <path>`  
+Save the most recent LLM response to a file.
 
 * `setkey <backend> <envvar>`  
-  Configure where an API key is read from (e.g. `OPENAI_API_KEY`).
-  The key value itself should never be stored in shell history.
+Configure which environment variable supplies an API key.
+Key values must never be recorded in history.
 
 ---
 
-## Bash built-ins (compatibility set)
+## Planned bash-compatible built-ins
 
-These command names are reserved for bash-compatible built-ins. clanker may
-implement them in phases.
+The following command names are reserved for bash-compatible behavior and may be
+implemented incrementally.
 
-### Shell state and configuration
+### Shell state and configuration (planned)
 
-* `alias [name[=value] ...]`  
-  Define or list aliases.
+* `export`
+* `unset`
+* `alias`, `unalias`
+* `set`, `shopt`, `declare`, `typeset`, `readonly`, `local`
 
-* `unalias [-a] name...`  
-  Remove aliases.
+These require a defined variable and environment model.
 
-* `set [options] [name=value ...]`  
-  Set shell options and positional parameters (subset may be implemented).
+---
 
-* `shopt [-pqsu] [-o] [optname...]`  
-  Set/list shell options (optional).
+### Execution and evaluation (planned / high risk)
 
-* `declare [-aAfgiIlnrtux] [name[=value] ...]`  
-  Declare variables and attributes (optional).
+* `:`
+* `true`, `false`
+* `command`
+* `builtin`
+* `eval`
+* `exec`
+* `hash`
+* `return`
 
-* `typeset`  
-  Korn-shell-compatible synonym for `declare` (optional).
+Several of these introduce complex or potentially unsafe semantics and are
+expected to be implemented cautiously or deferred.
 
-* `readonly [name[=value] ...]`  
-  Mark variables as read-only.
+---
 
-* `local [name[=value] ...]`  
-  Local variables within functions (requires function support).
+### I/O and strings (planned)
 
-* `unset`  
-  (See Phase 1.)
+* `echo`
+* `printf`
+* `read`
 
-### Execution and evaluation
+Semantics should follow bash/zsh where feasible, but deterministic behavior
+takes precedence over compatibility edge cases.
 
-* `:`  
-  No-op; returns success.
+---
 
-* `true` / `false`  
-  Return success / failure.
+### Job control (planned)
 
-* `command [-pVv] command [arg...]`  
-  Run command bypassing functions/aliases; inspect command type.
+* `jobs`
+* `fg`
+* `bg`
+* `wait`
+* `kill`
+* `disown`
+* `suspend`
 
-* `builtin [shell-builtin [args...]]`  
-  Execute a shell builtin explicitly.
+These require background execution, job tables, and signal coordination.
 
-* `eval [arg...]`  
-  Evaluate arguments as shell code (high risk; likely deferred).
+---
 
-* `exec [-cl] [-a name] [command [args...]]`  
-  Replace shell process with a command.
+### History and editing (planned)
 
-* `hash [-lr] [-p pathname] [-dt] [name...]`  
-  Remember/forget command locations (optional).
+* `history`
 
-* `return [n]`  
-  Return from a function or sourced file (requires those features).
-
-### Scripting and file inclusion
-
-* `source file [args...]` / `.` file [args...]  
-  Read and execute commands from file (candidate for “clanker scripts”).
-
-* `trap [-lp] [[arg] signal_spec ...]`  
-  Signal handling (optional).
-
-### I/O and strings
-
-* `echo [-neE] [arg...]`  
-  Print arguments (bash semantics).
-
-* `printf format [arguments...]`  
-  Formatted output.
-
-* `read [-ers] [-a array] [-d delim] [-i text] [-n nchars] [-N nchars]
-  [-p prompt] [-t timeout] [-u fd] [name ...]`  
-  Read a line from input (partial implementation acceptable early).
-
-### Arithmetic
-
-* `let arg [arg...]`  
-  Arithmetic evaluation (optional).
-
-### Directories and stack
-
-* `pushd [-n] [+N | -N | dir]`  
-  Push directory onto stack (optional).
-
-* `popd [-n] [+N | -N]`  
-  Pop directory stack (optional).
-
-* `dirs [-clpv] [+N | -N]`  
-  List directory stack (optional).
-
-### Job control and process
-
-* `jobs`, `fg`, `bg`  
-  (See Phase 1.)
-
-* `kill [-s sigspec | -n signum | -sigspec] pid | jobspec ...`  
-  Send signals.
-
-* `wait [-fn] [-p var] [id ...]`  
-  Wait for jobs/processes.
-
-* `disown [-h] [-ar] [jobspec ... | pid ...]`  
-  Remove jobs from job table (optional).
-
-* `suspend [-f]`  
-  Suspend shell (optional).
-
-### History and editing
-
-* `history [n]` / `history -c` / `history -d offset` / `history -r` / `history -w` ...  
-  Display and manage command history.
+History expansion (`!`) may be implemented later; if implemented, it must be
+bash-compatible.
 
 ---
 
 ## Line editing and history requirements
 
-Interactive input shall provide bash-like line editing and history behavior:
+Interactive input should provide bash-like line editing behavior:
 
-* Emacs-style editing keys by default
+* Emacs-style key bindings by default
 * Incremental reverse search (Ctrl-R)
-* Persistent history file (configurable location)
-* History expansion may be implemented later; if implemented, it must be bash-compatible
+* Persistent history file (configurable)
 
-Implementation detail:
-clanker may implement a small built-in line editor, or use an OS-provided
-facility when available, but behavior visible to the user should match bash
-closely.
+Line editing is a UI concern; it must not affect parsing or execution semantics.
+
+---
+
+## Notes on compatibility
+
+Compatibility with bash and zsh is a **goal**, not a guarantee.
+
+Where exact compatibility conflicts with determinism, clarity, or security,
+clanker documents and prefers its own explicitly defined behavior.
+
+---
 

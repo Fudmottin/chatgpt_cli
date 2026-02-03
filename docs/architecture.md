@@ -1,13 +1,18 @@
 # clanker — architecture
 
 This document describes the high-level architecture of the clanker shell.
-It is intended to guide implementation and keep responsibilities separated.
+It defines responsibilities and boundaries between components, and serves
+as an architectural guide rather than a commitment to specific future
+features.
+
+This document must remain consistent with `execution-model.md`, which is
+authoritative for execution semantics.
 
 ---
 
 ## Goals
 
-* Clear separation of concerns: input, parsing, execution, services
+* Clear separation of concerns: input, parsing, expansion, execution, services
 * Deterministic behavior and testable components
 * Interactive responsiveness (fast prompt, interruptible work)
 * Minimal dependencies (C++23 + standard library)
@@ -21,11 +26,19 @@ It is intended to guide implementation and keep responsibilities separated.
 Responsibilities:
 
 * Display prompts
-* Read user input (support continued input until parse-complete)
+* Read user input (continuing until syntactically complete)
 * Dispatch complete input to the parser
 * Execute the resulting AST
-* Maintain shell state (cwd, variables, last status, job table, history)
+* Maintain minimal shell state
 * Handle Ctrl-C and EOF
+
+Current shell state includes:
+
+* Current working directory
+* Last exit status
+
+Additional state (history, variables, job table, model registry) is introduced
+incrementally and documented when implemented.
 
 Key interfaces:
 
@@ -39,20 +52,19 @@ Key interfaces:
 
 Responsibilities:
 
-* Provide bash-like line editing and history behavior
+* Provide interactive line editing
+* Support continued input for incomplete syntax
 * Maintain an in-memory history list
-* Read/write a history file
-* Support incremental reverse search (Ctrl-R)
 * Never record secrets (e.g., API keys) in history
 
-Implementation approach:
+Phased implementation:
 
-* Phase 1: minimal line editor (raw mode optional) with history and basic editing
-* Phase 2: full bash-like keybindings and search
-* History expansion (`!`) is deferred; if implemented it must be bash-compatible
+* Phase 1: minimal input (e.g. `std::getline`)
+* Phase 2: editable input and navigation
+* Phase 3: advanced features (search, history persistence)
 
-Note: Line editing is a UI layer; it must not affect parsing semantics beyond
-providing a complete input string.
+Line editing is a UI concern only; it must not affect parsing or execution
+semantics.
 
 ---
 
@@ -61,49 +73,51 @@ providing a complete input string.
 Responsibilities:
 
 * Tokenize input according to `command-language.md`
-* Parse tokens into an AST:
+* Parse tokens into an AST representing command structure:
   * simple commands
   * pipelines
-  * `&&` / `||`
-  * optional background marker
-* Provide “parse incomplete” feedback to the REPL (e.g., open quote, dangling `|`)
+  * conditional operators (`&&`, `||`)
+  * optional background marker (`&`)
+* Report incomplete input (open constructs, dangling operators)
+* Report syntax errors with precise diagnostics
 
-Non-goals (initially):
+Notes:
 
-* Bash-compatible expansion
-* Functions, here-docs, command substitution
+* Command substitution and brace groups are recognized lexically
+* Execution semantics are not handled by the parser
 
-Suggested structure:
+The parser produces one of:
 
-* `Lexer` produces a vector of tokens with source locations
-* `Parser` consumes tokens and produces:
-  * `ParseResult::Complete(AST)`
-  * `ParseResult::Incomplete(reason)`
-  * `ParseResult::Error(message, location)`
+* `Complete(AST)`
+* `Incomplete(reason)`
+* `Error(message, location)`
 
 ---
 
 ### 4) AST (Abstract Syntax Tree)
 
-The AST should be small, explicit, and stable.
+The AST is small, explicit, and execution-agnostic.
 
-Minimal nodes:
+Principles:
+
+* Encodes structure only
+* No file descriptors, threads, or process concepts
+* No implicit control flow
+
+Representative nodes include:
 
 * `SimpleCommand`
-  * `std::vector<std::string> argv`
-  * (later) redirections, assignments
+  * argument vector (`argv`)
+  * (later) redirections
 
 * `Pipeline`
-  * `std::vector<SimpleCommand> stages`
+  * ordered sequence of command stages
 
-* `CommandList`
-  * sequence of `(Pipeline, Op)` where `Op` is `AndThen` or `OrElse`
+* Control operators (`&&`, `||`, `;`, `&`) represented as explicit structural
+  nodes rather than flags
 
-* `JobSpec`
-  * `CommandList list`
-  * `bool background`
-
-The AST must not embed execution concerns (file descriptors, threads, etc.).
+The exact shape of the AST is defined in `ast.h` and may evolve as features
+are added.
 
 ---
 
@@ -112,20 +126,21 @@ The AST must not embed execution concerns (file descriptors, threads, etc.).
 Responsibilities:
 
 * Execute AST nodes and return an exit status
-* Dispatch a `SimpleCommand` to:
-  * built-in implementation, or
-  * external program execution
-* Implement pipelines and conditional execution:
+* Dispatch simple commands to:
+  * built-in implementations, or
+  * external programs
+* Implement:
   * pipeline wiring
-  * short-circuit for `&&` and `||`
+  * conditional execution (`&&`, `||`)
+* Propagate exit status according to shell rules
 * Integrate Ctrl-C handling and cleanup
-* Maintain “last status” in shell state
 
 Design constraints:
 
 * Built-ins execute in-process and may mutate shell state
-* External commands execute in child processes (platform-appropriate)
-* Pipelines require concurrent execution of stages (processes and/or threads)
+* External commands execute in child processes
+* Built-ins are subject to execution constraints defined in
+  `execution-model.md`
 
 ---
 
@@ -133,16 +148,17 @@ Design constraints:
 
 Responsibilities:
 
-* Provide a mapping from command name → built-in implementation
-* Provide metadata for help, completion, and documentation:
-  * synopsis, flags, category
+* Map command names to built-in implementations
+* Provide metadata for help and documentation
 
 Interface shape:
 
-* `BuiltinResult run(const BuiltinContext&, std::span<std::string> argv)`
+```text
+BuiltinResult run(const BuiltinContext&, std::span<std::string> argv)
+```
 
-The registry must include clanker-specific built-ins (LLM orchestration) and
-bash-compatible built-ins as defined in `built-ins.md`.
+The registry includes both core shell built-ins and clanker-specific
+built-ins (e.g. LLM orchestration), as defined in `built-ins.md`.
 
 ---
 
@@ -150,15 +166,15 @@ bash-compatible built-ins as defined in `built-ins.md`.
 
 Responsibilities:
 
-* Locate executables (PATH handling policy is explicit)
-* Launch process with argv/environment
-* Support pipelines by exposing stdin/stdout/stderr wiring
-* Support foreground/background jobs (later)
+* Locate executables according to an explicit PATH policy
+* Launch external programs with argv and environment
+* Support pipeline wiring via stdin/stdout/stderr
+* Support background execution in later phases
 
 Platform notes:
 
-* macOS/Linux: `posix_spawn` or `fork`/`exec`
-* Windows: deferred; architecture should keep it isolated
+* macOS/Linux: `posix_spawn` (preferred) or equivalent
+* Windows support is deferred but architecturally isolated
 
 ---
 
@@ -167,36 +183,37 @@ Platform notes:
 Responsibilities:
 
 * Provide a stable interface for LLM requests and responses
-* Hide backend differences (OpenAI, Anthropic, etc.)
-* Provide streaming or non-streaming responses (later)
+* Abstract backend differences (OpenAI, Anthropic, etc.)
+* Support deterministic stub behavior during early development
 
-Interfaces:
+Interfaces include:
 
-* `ModelBackend` (polymorphic)
-  * `Completion request(CompletionRequest)`
+* `ModelBackend`
 * `ModelRegistry`
-  * configured backends and default selection
 
-Phase 1: stub implementation returns fixed text or echoes input.
+Phase 1 implementations return fixed or echoed data.
 
 ---
 
 ## Shell State
 
-Shell state is owned by the REPL and passed by reference to the executor and
+Shell state is owned by the REPL and passed explicitly to the executor and
 built-ins.
 
-Suggested state:
+Currently defined state:
 
-* Current working directory (logical root enforced by policy)
-* Environment snapshot / overlay (what external commands inherit)
-* Built-in registry
-* Model registry + current model selection
-* Context set (files/directories selected for LLM prompting)
-* History manager
-* Job table (background jobs; later)
+* Current working directory
 * Last exit status
-* Last LLM response (for `last`, `save`, etc.)
+
+Planned additions (introduced incrementally):
+
+* History manager
+* Environment overlays
+* Job table
+* Model registry and selection
+* Context sets for LLM prompting
+
+No filesystem confinement is currently enforced.
 
 ---
 
@@ -205,25 +222,22 @@ Suggested state:
 ### Interactive Loop
 
 1. Display primary prompt
-2. Read a line
-3. Append to an input buffer
+2. Read input line
+3. Append to input buffer
 4. Attempt parse:
+
    * Complete → execute AST → clear buffer
-   * Incomplete → show secondary prompt → continue reading
+   * Incomplete → show secondary prompt → continue
    * Error → report → clear buffer
 5. Repeat until `exit` or EOF
 
-### Batch Process
+### Batch Execution
 
-1. Take name of a file containing a script and optional arguments
-2. Process the script for proper syntax
-3. Best effort script execution:
-   * parse script
-   * If syntax errors are discovered, emit error message and terminate
-   * Proceed with execution of AST
-   * If a runtime error occurs, notify, roll back if possible, cleanup,
-     terminate
-   * Clean up and terminate returning error code like any bash script would
+1. Read entire script input
+2. Parse script
+3. If syntax errors exist, report and terminate
+4. Execute AST
+5. Terminate with final exit status
 
 ---
 
@@ -231,73 +245,52 @@ Suggested state:
 
 Requirements:
 
-* Ctrl-C interrupts the foreground activity
-* Shell returns to a fresh prompt on a new line
-* No resource leaks (pipes, child processes, threads)
+* Ctrl-C interrupts foreground execution
+* Shell returns to a clean prompt
+* No resource leaks
 
 Approach:
 
-* Keep signal handler minimal: set an atomic flag
-* Executor periodically checks the flag and aborts/cleans up
-* For external processes, forward signals to the foreground process group (later)
+* Signal handlers set atomic flags only
+* Executor checks flags and performs cleanup
+* Forwarding signals to child processes is phased in later
 
 ---
 
-## Asynchrony and Jobs (Phased)
+## Asynchrony and Jobs
 
 Phase 1:
 
-* Synchronous execution of simple commands and pipelines
-* No job table (or minimal “background start” placeholder)
+* Synchronous execution only
+* Background marker may be parsed but executed synchronously
 
 Phase 2:
 
 * Background execution with `&`
-* `jobs`, `fg`, `bg`, `wait` built-ins
-* Job table with process identifiers and states
+* Job table and related built-ins (`jobs`, `fg`, `bg`, `wait`)
 
 ---
 
 ## Testing Strategy
 
-* Lexer tests: token sequences from inputs
-* Parser tests: AST shapes and parse-incomplete cases
+* Lexer tests: token sequences
+* Parser tests: AST structure and incomplete cases
 * Executor tests:
+
   * built-ins in isolation
-  * pipeline wiring using small test commands
-* LLM service tests: stub deterministic outputs
+  * pipeline wiring with test commands
+* LLM tests: deterministic stub responses
 
-Focus: deterministic unit tests before integrating interactive I/O.
-
----
-
-## Implementation Order (Recommended)
-
-1. Lexer + parser + AST (no execution)
-2. Minimal REPL (no line editing; `std::getline`)
-3. Built-in registry + a few built-ins (`exit`, `pwd`, `cd`, `help`)
-4. External command runner
-5. Pipelines and `&&`/`||`
-6. Ctrl-C interrupt handling
-7. LLM service stub + LLM built-ins (`prompt`, `ask`, `use`, `models`)
-8. History and line editor improvements
-9. Background jobs and job control
+Priority is deterministic unit tests before interactive features.
 
 ---
-
-## Command Execution Model
-
-A pipeline stage is either:
-* a built-in executed in-process, or
-* an external command executed as a child process.
-
-Both are wired through stdin/stdout/stderr so that built-ins can participate in
-pipelines wherever practical.
 
 ## Trust Boundaries
 
-* External commands: local execution under the user account (traditional shell risk).
-* Agents/LLMs: remote HTTPS services exchanging JSON; they do not run local code.
-* clanker-managed filesystem operations may be restricted to a configured root.
+* External commands execute locally under the user account
+* LLMs are remote HTTPS services exchanging JSON
+* clanker remains the authority for all local execution
+
 
 ---
+
