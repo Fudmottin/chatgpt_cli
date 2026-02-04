@@ -193,6 +193,21 @@ void test_andor(const char* clanker) {
       expect(rr.exit_code == 0, "true||... exit code");
       expect(rr.out.empty(), "true||... stdout empty");
    }
+
+   // Chaining / precedence: left-to-right AndOr chain (false && X) || Y => Y.
+   {
+      const auto rr = run_clanker(clanker, "false && echo x || echo y");
+      expect(rr.exit_code == 0, "false&&...||... exit code");
+      expect(rr.out == "y\n", "false&&...||... stdout");
+   }
+
+   // Pipeline status feeds control operators: (echo a | cat) && echo b.
+   {
+      const auto rr = run_clanker(clanker, "echo a | cat && echo b");
+      expect(rr.exit_code == 0, "pipeline && exit code");
+      expect(rr.out == "a\nb\n", "pipeline && stdout");
+      expect(rr.err.empty(), "pipeline && stderr empty");
+   }
 }
 
 static bool contains_line(const std::string& out, std::string_view line) {
