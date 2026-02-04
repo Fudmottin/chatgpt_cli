@@ -80,7 +80,12 @@ add_test(
 )
 
 add_test(
-    NAME clanker_not_implemented
-    COMMAND clanker_tests $<TARGET_FILE:clanker> --case not_implemented
+    NAME clanker_andor
+    COMMAND clanker_tests $<TARGET_FILE:clanker> --case andor
+)
+
+add_test(
+    NAME clanker_background
+    COMMAND clanker_tests $<TARGET_FILE:clanker> --case background
 )
 

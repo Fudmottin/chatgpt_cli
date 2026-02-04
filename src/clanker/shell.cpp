@@ -19,18 +19,11 @@ namespace {
 // Execute a successfully-parsed unit.
 // Current staged semantics:
 // - pipeline: run it
-// - list: run pipelines sequentially; status is that of the last executed
-// pipeline
+// - list: run list (supports &&, ||, &)
 // - empty: run nothing; preserve last_status
 int execute_parse_result(Executor& exec, const ParseResult& pr,
                          int last_status) {
-   if (pr.result_is_list()) {
-      for (const auto& pl : pr.list.pipelines) {
-         if (pl.stages.empty()) continue;
-         last_status = exec.run_pipeline(pl);
-      }
-      return last_status;
-   }
+   if (pr.result_is_list()) return exec.run_list(pr.list);
 
    // Legacy single-pipeline path
    if (pr.pipeline.stages.empty()) return last_status;
@@ -63,6 +56,8 @@ int Shell::run() {
    int last_status = 0;
 
    for (;;) {
+      reap_children_nonblocking();
+
       if (consume_sigint_flag()) {
          std::cout << '\n';
          buffer.clear();
@@ -131,6 +126,7 @@ int Shell::run_string(std::string_view script_text) {
 
       buffer.clear();
       last_status = execute_parse_result(exec, pr, last_status);
+      reap_children_nonblocking();
    }
 
    if (!buffer.empty()) {
@@ -146,7 +142,7 @@ int Shell::run_string(std::string_view script_text) {
       }
       last_status = execute_parse_result(exec, pr, last_status);
    }
-
+   reap_children_nonblocking();
    return last_status;
 }
 

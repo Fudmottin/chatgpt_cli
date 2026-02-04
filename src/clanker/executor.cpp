@@ -318,5 +318,53 @@ int Executor::run_pipeline(const Pipeline& pipeline) {
    return run_pipeline_all_external(pipeline);
 }
 
+int Executor::run_andor(const AndOr& ao) {
+   int st = run_pipeline(ao.first);
+
+   for (const auto& tail : ao.rest) {
+      const bool ok = (st == 0);
+      if (tail.op == AndOrOp::AndIf) {
+         if (!ok) continue;
+      } else { // OrIf
+         if (ok) continue;
+      }
+      st = run_pipeline(tail.rhs);
+   }
+
+   return st;
+}
+
+int Executor::run_background(const AndOr& ao) {
+   if (!sec_.identity_unchanged()) return deny_privilege_drift();
+
+   const pid_t pid = ::fork();
+   if (pid < 0) {
+      fd_write_all(STDERR_FILENO, "clanker: fork failed\n");
+      return 1; // deterministic: failed to start
+   }
+
+   if (pid == 0) {
+      const int st = run_andor(ao);
+      _exit(st & 0xff); // deterministic, avoid flushing parent buffers
+   }
+
+   // Parent: do not wait. Deterministic status: started successfully.
+   return 0;
+}
+
+int Executor::run_list(const CommandList& list) {
+   int last_status = 0;
+
+   for (const auto& it : list.items) {
+      if (it.term == Terminator::Ampersand) {
+         last_status = run_background(it.cmd); // 0 if started, else 1/125/etc.
+      } else {
+         last_status = run_andor(it.cmd);
+      }
+   }
+
+   return last_status;
+}
+
 } // namespace clanker
 

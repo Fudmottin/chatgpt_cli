@@ -94,7 +94,8 @@ RunResult run_clanker(const char* clanker_path, std::string_view cmd) {
              << "  pipeline\n"
              << "  list\n"
              << "  status\n"
-             << "  not_implemented\n";
+             << "  andor\n"
+             << "  background\n";
    std::exit(2);
 }
 
@@ -171,11 +172,40 @@ void test_status(const char* clanker) {
    }
 }
 
-void test_not_implemented(const char* clanker) {
-   const auto rr = run_clanker(clanker, "false&&echo x");
-   expect(rr.exit_code != 0, "false&&... exit code");
-   expect(rr.out.empty(), "false&&... stdout empty");
-   // Be permissive about stderr: parse-time vs run-time error may evolve.
+void test_andor(const char* clanker) {
+   {
+      const auto rr = run_clanker(clanker, "false&&echo x");
+      expect(rr.exit_code != 0, "false&&... exit code");
+      expect(rr.out.empty(), "false&&... stdout empty");
+   }
+   {
+      const auto rr = run_clanker(clanker, "true&&echo x");
+      expect(rr.exit_code == 0, "true&&... exit code");
+      expect(rr.out == "x\n", "true&&... stdout");
+   }
+   {
+      const auto rr = run_clanker(clanker, "false||echo x");
+      expect(rr.exit_code == 0, "false||... exit code");
+      expect(rr.out == "x\n", "false||... stdout");
+   }
+   {
+      const auto rr = run_clanker(clanker, "true||echo x");
+      expect(rr.exit_code == 0, "true||... exit code");
+      expect(rr.out.empty(), "true||... stdout empty");
+   }
+}
+
+static bool contains_line(const std::string& out, std::string_view line) {
+   // Cheap and cheerful: exact substring check.
+   return out.find(std::string(line)) != std::string::npos;
+}
+
+void test_background(const char* clanker) {
+   // Order is intentionally not asserted.
+   const auto rr = run_clanker(clanker, "echo a & echo b");
+   expect(rr.exit_code == 0, "background exit code");
+   expect(contains_line(rr.out, "a\n"), "background contains a");
+   expect(contains_line(rr.out, "b\n"), "background contains b");
 }
 
 } // namespace
@@ -191,7 +221,8 @@ int main(int argc, char** argv) {
       test_pipeline(clanker);
       test_list(clanker);
       test_status(clanker);
-      test_not_implemented(clanker);
+      test_andor(clanker);
+      test_background(clanker);
    } else if (which == "smoke") {
       test_smoke(clanker);
    } else if (which == "pipeline") {
@@ -200,8 +231,10 @@ int main(int argc, char** argv) {
       test_list(clanker);
    } else if (which == "status") {
       test_status(clanker);
-   } else if (which == "not_implemented") {
-      test_not_implemented(clanker);
+   } else if (which == "andor") {
+      test_andor(clanker);
+   } else if (which == "background") {
+      test_background(clanker);
    } else {
       usage();
    }
