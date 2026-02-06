@@ -1,0 +1,65 @@
+BasedOnStyle: LLVM
+
+# Indentation
+IndentWidth: 3
+TabWidth: 3
+UseTab: Never
+IndentCaseLabels: false
+NamespaceIndentation: None
+ConstructorInitializerIndentWidth: 3
+ContinuationIndentWidth: 3
+
+# Braces
+BreakBeforeBraces: Attach
+BraceWrapping:
+  AfterFunction: false
+  AfterClass: false
+  AfterStruct: false
+  AfterNamespace: false
+  BeforeElse: true
+
+# Line breaks for arrays/initializers
+BinPackParameters: true
+BinPackArguments: true
+BreakConstructorInitializers: BeforeComma
+AllowShortFunctionsOnASingleLine: All
+AllowShortLambdasOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: true
+AllowShortLoopsOnASingleLine: true
+AllowShortCaseLabelsOnASingleLine: false
+PenaltyBreakBeforeFirstCallParameter: 100
+
+# Spaces
+SpaceBeforeParens: ControlStatements
+SpacesInParentheses: false
+SpacesInAngles: false
+SpaceAfterTemplateKeyword: false
+PointerAlignment: Left
+ReferenceAlignment: Left
+
+# Includes
+IncludeBlocks: Regroup
+SortIncludes: true
+IncludeCategories:
+  # Boost (and other third-party libs in <...> starting with boost/)
+  # Add more libs here if needed, e.g. (boost|eigen|fmt)/
+  - Regex: '^<(boost)/'
+    Priority: 1
+
+  # Standard C/C++ headers in <...> (most have no extension or .h, but catch both)
+  - Regex: '^<.*>'
+    Priority: 2
+
+  # Your own project headers (usually in "...", catch-all for quotes)
+  - Regex: '.*'
+    Priority: 3
+
+# Misc
+ColumnLimit: 80
+Cpp11BracedListStyle: true
+FixNamespaceComments: true
+ReflowComments: true
+BreakTemplateDeclarations: Yes
+InsertNewlineAtEOF: true
+KeepEmptyLinesAtEOF: true
+
