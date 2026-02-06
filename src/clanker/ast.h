@@ -7,8 +7,21 @@
 
 namespace clanker {
 
+enum class RedirKind {
+   In,        // <
+   OutTrunc,  // >
+   OutAppend, // >>
+};
+
+struct Redirection {
+   int fd = -1;            // default 0 for <, default 1 for > / >>
+   RedirKind kind{};
+   std::string target;     // filename (WORD)
+};
+
 struct SimpleCommand {
    std::vector<std::string> argv;
+   std::vector<Redirection> redirs;
 };
 
 struct Pipeline {
