@@ -118,6 +118,9 @@ LexResult Lexer::lex(std::string_view input) const {
          if (c == '#') return true; // comment begins at token boundary
          if (c == '|') return true;
          if (c == '&') return true;
+         if (c == '<') return true;
+         if (c == '>') return true;
+
          return false;
       };
 
@@ -392,6 +395,53 @@ LexResult Lexer::lex(std::string_view input) const {
 
       if (c == '#') {
          skip_comment();
+         continue;
+      }
+
+      // IO number: digits immediately followed by a redirection operator.
+      // Example: 2>file, 12>>file
+      if (c >= '0' && c <= '9') {
+         const SourceLoc loc = cur.loc;
+
+         std::size_t j = cur.i;
+         while (j < cur.s.size()) {
+            const char d = cur.s[j];
+            if (d < '0' || d > '9') break;
+            ++j;
+         }
+
+         const char next = (j < cur.s.size()) ? cur.s[j] : '\0';
+         if (next == '<' || next == '>') {
+            std::string digits;
+            digits.reserve(j - cur.i);
+            while (cur.i < j) {
+               digits.push_back(cur.peek());
+               cur.advance();
+            }
+            out.tokens.push_back(
+               Token{.kind = TokenKind::IoNumber,
+                     .text = std::move(digits),
+                     .loc = loc});
+            continue;
+         }
+         // Otherwise: fall through; it will lex as a WORD.
+      }
+
+      if (c == '<') {
+         const SourceLoc loc = cur.loc;
+         cur.advance();
+         push_op(TokenKind::RedirectIn, loc);
+         continue;
+      }
+
+      if (c == '>') {
+         const SourceLoc loc = cur.loc;
+         cur.advance();
+         if (cur.consume('>')) {
+            push_op(TokenKind::RedirectAppend, loc);
+         } else {
+            push_op(TokenKind::RedirectOut, loc);
+         }
          continue;
       }
 

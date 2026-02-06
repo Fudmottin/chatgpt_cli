@@ -36,6 +36,14 @@ static const char* token_spelling(TokenKind k) noexcept {
       return "&";
    case TokenKind::Semicolon:
       return ";";
+   case TokenKind::RedirectIn:
+      return "<";
+   case TokenKind::RedirectOut:
+      return ">";
+   case TokenKind::RedirectAppend:
+      return ">>";
+   case TokenKind::IoNumber:
+      return "io-number";
    case TokenKind::Newline:
       return "newline";
    case TokenKind::End:
@@ -213,6 +221,15 @@ ParseResult Parser::parse(const std::string& input) const {
 
       case TokenKind::End:
          break;
+            
+      case TokenKind::RedirectIn:
+      case TokenKind::RedirectOut:
+      case TokenKind::RedirectAppend:
+      case TokenKind::IoNumber:
+         return parse_error(std::string("syntax error: operator '") +
+                            token_spelling(t.kind) +
+                            "' not implemented");
+
       }
    }
 

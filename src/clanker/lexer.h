@@ -17,14 +17,19 @@ struct SourceLoc {
 enum class TokenKind {
    Word,
 
-   Pipe,      // |
-   AndIf,     // &&
-   OrIf,      // ||
-   Ampersand, // &
-   Semicolon, // ;
-   Newline,   // \n (command terminator)
+   Pipe,
+   AndIf,
+   OrIf,
+   Ampersand,
+   Semicolon,
+   Newline,
 
-   End // sentinel
+   RedirectIn,
+   RedirectOut,
+   RedirectAppend,
+   IoNumber,
+
+   End
 };
 
 struct Token {
