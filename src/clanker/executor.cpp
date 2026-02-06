@@ -356,8 +356,9 @@ int Executor::run_pipeline_builtin_first(const SimpleCommand& first,
          int out_fd = spec.stdout_fd;
          int err_fd = spec.stderr_fd;
          std::string em;
-         const int rc = apply_redirs_to_spawn(st.redirs, in_fd, out_fd, err_fd,
-                                              rin, rout, rerr, em);
+         const int rc =
+            apply_redirs_to_spawn(st.redirs, in_fd, out_fd, err_fd, rin, rout,
+                                  rerr, em);
          if (rc != 0) {
             if (em.empty()) em = "error: redirection failed\n";
             fd_write_all(STDERR_FILENO, em);
@@ -384,16 +385,30 @@ int Executor::run_pipeline_builtin_first(const SimpleCommand& first,
       prev_read = std::move(next_read);
    }
 
-   // Run builtin writing to pipe (or redirected destination).
+   // Run builtin with stdout wired to the pipe, unless redirections override it.
    int builtin_status = 0;
    if (auto fn = builtins_.find(first.argv.front())) {
       UniqueFd save0, save1, save2;
-      std::string em;
 
-      // If the builtin has a stdout redirection, it should override the pipe.
-      // We implement this by dup2'ing in-process before calling the builtin.
-      // (stdin redirs also apply to builtins here; stdout redirs may bypass
-      // pipe.)
+      // Always save the std fds we might touch.
+      save0.reset(::dup(STDIN_FILENO));
+      save1.reset(::dup(STDOUT_FILENO));
+      save2.reset(::dup(STDERR_FILENO));
+      if (save0.get() < 0 || save1.get() < 0 || save2.get() < 0) {
+         fd_write_all(STDERR_FILENO, "error: dup failed\n");
+         restore_std_fds(save0, save1, save2);
+         return 1;
+      }
+
+      // Pipe is the default stdout for the builtin stage.
+      if (::dup2(write_end.get(), STDOUT_FILENO) < 0) {
+         fd_write_all(STDERR_FILENO, "error: dup2 failed\n");
+         restore_std_fds(save0, save1, save2);
+         return 1;
+      }
+
+      // Apply explicit redirections (override the pipe if they touch fd 1).
+      std::string em;
       const int rc =
          apply_redirs_in_process(first.redirs, save0, save1, save2, em);
       if (rc != 0) {
@@ -405,23 +420,10 @@ int Executor::run_pipeline_builtin_first(const SimpleCommand& first,
 
       BuiltinContext ctx{.root = policy_.root(),
                          .in_fd = STDIN_FILENO,
-                         .out_fd = write_end.get(),
+                         .out_fd = STDOUT_FILENO,
                          .err_fd = STDERR_FILENO,
                          .cwd = cwd_,
                          .oldpwd = oldpwd_};
-
-      // If stdout wasn't redirected, ctx.out_fd should be the pipe write end.
-      // But if it *was* redirected, STDOUT_FILENO now points at the file; ctx
-      // still writes to write_end unless builtin uses stdout fd.
-      //
-      // In your builtins, you already use ctx.out_fd, so we must choose:
-      // - if no stdout redir in first.redirs -> use pipe write_end
-      // - if stdout redir present -> use STDOUT_FILENO
-      bool stdout_redirected = false;
-      for (const auto& r : first.redirs) {
-         if (r.fd == 1) stdout_redirected = true;
-      }
-      if (stdout_redirected) ctx.out_fd = STDOUT_FILENO;
 
       builtin_status = (*fn)(ctx, first.argv);
 
