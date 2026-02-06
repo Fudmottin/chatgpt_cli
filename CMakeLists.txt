@@ -89,3 +89,8 @@ add_test(
     COMMAND clanker_tests $<TARGET_FILE:clanker> --case background
 )
 
+add_test(
+    NAME clanker_redirs
+    COMMAND clanker_tests $<TARGET_FILE:clanker> --case redirs
+)
+

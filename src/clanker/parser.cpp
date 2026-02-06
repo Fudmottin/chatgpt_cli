@@ -64,23 +64,6 @@ static ParseResult parse_error(std::string msg) {
    return {.kind = ParseKind::Error, .message = std::move(msg)};
 }
 
-static int default_redir_fd(TokenKind k) noexcept {
-   return (k == TokenKind::RedirectIn) ? 0 : 1;
-}
-
-static RedirKind token_to_redir_kind(TokenKind k) noexcept {
-   switch (k) {
-   case TokenKind::RedirectIn:
-      return RedirKind::In;
-   case TokenKind::RedirectOut:
-      return RedirKind::OutTrunc;
-   case TokenKind::RedirectAppend:
-      return RedirKind::OutAppend;
-   default:
-      return RedirKind::OutTrunc; // unreachable for valid callers
-   }
-}
-
 static Terminator token_to_terminator(TokenKind k) {
    switch (k) {
    case TokenKind::Semicolon:

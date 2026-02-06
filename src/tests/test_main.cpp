@@ -1,5 +1,7 @@
 // src/tests/test_main.cpp
 
+#include <filesystem>
+#include <cstdlib>
 #include <cerrno>
 #include <cstring>
 #include <iostream>
@@ -18,6 +20,16 @@ struct RunResult {
    std::string out;
    std::string err;
 };
+
+std::filesystem::path make_temp_dir() {
+   auto base = std::filesystem::temp_directory_path();
+   std::string tmpl = (base / "clanker-test.XXXXXX").string();
+   std::vector<char> buf(tmpl.begin(), tmpl.end());
+   buf.push_back('\0');
+   char* p = ::mkdtemp(buf.data());
+   if (!p) throw std::runtime_error("mkdtemp failed");
+   return std::filesystem::path(p);
+}
 
 std::string read_all(int fd) {
    std::string s;
@@ -95,7 +107,9 @@ RunResult run_clanker(const char* clanker_path, std::string_view cmd) {
              << "  list\n"
              << "  status\n"
              << "  andor\n"
-             << "  background\n";
+             << "  background\n"
+             << "  redirs\n";
+
    std::exit(2);
 }
 
@@ -223,6 +237,52 @@ void test_background(const char* clanker) {
    expect(contains_line(rr.out, "b\n"), "background contains b");
 }
 
+void test_redirs(const char* clanker) {
+   const auto tmp = make_temp_dir();
+
+   const std::string out = (tmp / "out").string();
+   const std::string in = (tmp / "in").string();
+   const std::string err = (tmp / "err").string();
+
+   // > truncates/creates
+   {
+      const auto rr = run_clanker(
+         clanker, "echo hi > " + out + "; cat " + out);
+      expect(rr.exit_code == 0, "redir > exit code");
+      expect(rr.out == "hi\n", "redir > content");
+      expect(rr.err.empty(), "redir > stderr empty");
+   }
+
+   // >> appends
+   {
+      const auto rr = run_clanker(
+         clanker, "echo a > " + out + "; echo b >> " + out + "; cat " + out);
+      expect(rr.exit_code == 0, "redir >> exit code");
+      expect(rr.out == "a\nb\n", "redir >> content");
+      expect(rr.err.empty(), "redir >> stderr empty");
+   }
+
+   // < reads
+   {
+      const auto rr =
+         run_clanker(clanker, "echo z > " + in + "; cat < " + in);
+      expect(rr.exit_code == 0, "redir < exit code");
+      expect(rr.out == "z\n", "redir < content");
+      expect(rr.err.empty(), "redir < stderr empty");
+   }
+
+   // 2> captures stderr
+   {
+      const auto rr =
+         run_clanker(clanker, "ls NO_SUCH 2> " + err + "; wc -c " + err);
+      expect(rr.exit_code == 0, "redir 2> exit code");
+      expect(!rr.out.empty(), "redir 2> produced wc output");
+      expect(rr.err.empty(), "redir 2> stderr empty");
+   }
+
+   std::filesystem::remove_all(tmp);
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -250,6 +310,8 @@ int main(int argc, char** argv) {
       test_andor(clanker);
    } else if (which == "background") {
       test_background(clanker);
+   } else if (which == "redirs") {
+      test_redirs(clanker);
    } else {
       usage();
    }
