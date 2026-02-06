@@ -1,4 +1,6 @@
 // src/clanker/parser.cpp
+#include <cctype>
+#include <optional>
 #include <utility>
 
 #include "clanker/lexer.h"
@@ -15,9 +17,15 @@ static bool is_trailing_control_operator(const LexResult& lr) {
 
 static bool pipeline_is_empty(const Pipeline& pl) {
    if (pl.stages.empty()) return true;
-   if (pl.stages.size() == 1 && pl.stages[0].argv.empty()) return true;
+
+   auto stage_empty = [](const SimpleCommand& st) {
+      return st.argv.empty() && st.redirs.empty();
+   };
+
+   if (pl.stages.size() == 1 && stage_empty(pl.stages[0])) return true;
+
    for (const auto& st : pl.stages) {
-      if (!st.argv.empty()) return false;
+      if (!stage_empty(st)) return false;
    }
    return true;
 }
@@ -54,6 +62,23 @@ static const char* token_spelling(TokenKind k) noexcept {
 
 static ParseResult parse_error(std::string msg) {
    return {.kind = ParseKind::Error, .message = std::move(msg)};
+}
+
+static int default_redir_fd(TokenKind k) noexcept {
+   return (k == TokenKind::RedirectIn) ? 0 : 1;
+}
+
+static RedirKind token_to_redir_kind(TokenKind k) noexcept {
+   switch (k) {
+   case TokenKind::RedirectIn:
+      return RedirKind::In;
+   case TokenKind::RedirectOut:
+      return RedirKind::OutTrunc;
+   case TokenKind::RedirectAppend:
+      return RedirKind::OutAppend;
+   default:
+      return RedirKind::OutTrunc; // unreachable for valid callers
+   }
 }
 
 static Terminator token_to_terminator(TokenKind k) {
@@ -121,9 +146,11 @@ ParseResult Parser::parse(const std::string& input) const {
    auto validate_current_pipeline_complete = [&]() -> ParseResult {
       if (pipeline_is_empty(current)) return {.kind = ParseKind::Complete};
 
-      if (!current.stages.empty() && current.stages.back().argv.empty()) {
+      if (!current.stages.empty() && current.stages.back().argv.empty() &&
+          current.stages.back().redirs.empty()) {
          return parse_error("syntax error: empty pipeline stage");
       }
+
       return {.kind = ParseKind::Complete};
    };
 
@@ -179,14 +206,61 @@ ParseResult Parser::parse(const std::string& input) const {
       return {.kind = ParseKind::Complete};
    };
 
-   for (const Token& t : lr.tokens) {
+   std::optional<int> pending_fd;
+
+   for (std::size_t i = 0; i < lr.tokens.size(); ++i) {
+      const Token& t = lr.tokens[i];
+
       switch (t.kind) {
       case TokenKind::Word:
          current.stages.back().argv.push_back(t.text);
          break;
 
+      case TokenKind::IoNumber: {
+         int fd = 0;
+         for (char ch : t.text) {
+            if (!std::isdigit(static_cast<unsigned char>(ch)))
+               return parse_error("syntax error: invalid io-number");
+            fd = fd * 10 + (ch - '0');
+         }
+         pending_fd = fd;
+         break;
+      }
+
+      case TokenKind::RedirectIn:
+      case TokenKind::RedirectOut:
+      case TokenKind::RedirectAppend: {
+         if (i + 1 >= lr.tokens.size())
+            return parse_error("syntax error: expected redirection target");
+
+         const Token& target = lr.tokens[i + 1];
+         if (target.kind != TokenKind::Word)
+            return parse_error("syntax error: expected redirection target");
+
+         const int fd =
+            pending_fd.value_or((t.kind == TokenKind::RedirectIn) ? 0 : 1);
+         pending_fd.reset();
+
+         RedirKind rk{};
+         if (t.kind == TokenKind::RedirectIn)
+            rk = RedirKind::In;
+         else if (t.kind == TokenKind::RedirectOut)
+            rk = RedirKind::OutTrunc;
+         else
+            rk = RedirKind::OutAppend;
+
+         current.stages.back().redirs.push_back(
+            Redirection{.fd = fd, .kind = rk, .target = target.text});
+
+         ++i; // consume target
+         break;
+      }
+
       case TokenKind::Pipe:
-         if (current.stages.back().argv.empty()) {
+         if (pending_fd.has_value())
+            return parse_error("syntax error: io-number without redirection");
+         if (current.stages.back().argv.empty() &&
+             current.stages.back().redirs.empty()) {
             return parse_error("syntax error: empty pipeline stage before '|'");
          }
          current.stages.push_back(SimpleCommand{});
@@ -194,7 +268,8 @@ ParseResult Parser::parse(const std::string& input) const {
 
       case TokenKind::AndIf:
       case TokenKind::OrIf: {
-         // Commit the pipeline to the AndOr chain, then set the pending op.
+         if (pending_fd.has_value())
+            return parse_error("syntax error: io-number without redirection");
          const ParseResult c = commit_current_pipeline_into_andor();
          if (c.kind == ParseKind::Error) return c;
 
@@ -203,9 +278,9 @@ ParseResult Parser::parse(const std::string& input) const {
                                token_spelling(t.kind) +
                                "' without left operand");
          }
-         if (pending_andor_op.has_value()) {
+         if (pending_andor_op.has_value())
             return parse_error("syntax error: consecutive control operators");
-         }
+
          pending_andor_op = token_to_andor_op(t.kind);
          break;
       }
@@ -213,6 +288,8 @@ ParseResult Parser::parse(const std::string& input) const {
       case TokenKind::Semicolon:
       case TokenKind::Newline:
       case TokenKind::Ampersand: {
+         if (pending_fd.has_value())
+            return parse_error("syntax error: io-number without redirection");
          const Terminator term = token_to_terminator(t.kind);
          const ParseResult f = flush_andor_to_list(term);
          if (f.kind == ParseKind::Error) return f;
@@ -220,16 +297,9 @@ ParseResult Parser::parse(const std::string& input) const {
       }
 
       case TokenKind::End:
+         if (pending_fd.has_value())
+            return parse_error("syntax error: io-number without redirection");
          break;
-            
-      case TokenKind::RedirectIn:
-      case TokenKind::RedirectOut:
-      case TokenKind::RedirectAppend:
-      case TokenKind::IoNumber:
-         return parse_error(std::string("syntax error: operator '") +
-                            token_spelling(t.kind) +
-                            "' not implemented");
-
       }
    }
 

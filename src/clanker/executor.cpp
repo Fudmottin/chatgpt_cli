@@ -1,5 +1,7 @@
 // src/clanker/executor.cpp
 #include <cerrno>
+#include <cstring>
+#include <fcntl.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <vector>
@@ -75,6 +77,116 @@ int make_pipe(UniqueFd& r, UniqueFd& w) {
    return 0;
 }
 
+int open_redir_fd(const Redirection& r) {
+   int flags = 0;
+   switch (r.kind) {
+   case RedirKind::In:
+      flags = O_RDONLY;
+      break;
+   case RedirKind::OutTrunc:
+      flags = O_WRONLY | O_CREAT | O_TRUNC;
+      break;
+   case RedirKind::OutAppend:
+      flags = O_WRONLY | O_CREAT | O_APPEND;
+      break;
+   }
+   flags |= O_CLOEXEC;
+
+   const int fd = ::open(r.target.c_str(), flags, 0666);
+   if (fd < 0) return -errno;
+   return fd;
+}
+
+bool is_std_fd(int fd) noexcept { return fd == 0 || fd == 1 || fd == 2; }
+
+int apply_redirs_to_spawn(const std::vector<Redirection>& redirs, int& in_fd,
+                          int& out_fd, int& err_fd, UniqueFd& in_owner,
+                          UniqueFd& out_owner, UniqueFd& err_owner,
+                          std::string& err_msg) {
+   for (const auto& r : redirs) {
+      if (!is_std_fd(r.fd)) {
+         err_msg = "error: redirection fd not supported (only 0,1,2)\n";
+         return 2;
+      }
+
+      const int ofd = open_redir_fd(r);
+      if (ofd < 0) {
+         err_msg = "error: cannot open '" + r.target + "': " +
+                   std::string(::strerror(-ofd)) + "\n";
+         return 1;
+      }
+
+      UniqueFd opened(ofd);
+
+      if (r.fd == 0) {
+         in_owner = std::move(opened);
+         in_fd = in_owner.get();
+      } else if (r.fd == 1) {
+         out_owner = std::move(opened);
+         out_fd = out_owner.get();
+      } else { // 2
+         err_owner = std::move(opened);
+         err_fd = err_owner.get();
+      }
+   }
+
+   return 0;
+}
+
+int apply_redirs_in_process(const std::vector<Redirection>& redirs,
+                            UniqueFd& save0, UniqueFd& save1, UniqueFd& save2,
+                            std::string& err_msg) {
+   auto save_if_needed = [&](int fd, UniqueFd& save) -> bool {
+      if (save.get() != -1) return true;
+      const int d = ::dup(fd);
+      if (d < 0) return false;
+      save.reset(d);
+      return true;
+   };
+
+   for (const auto& r : redirs) {
+      if (!is_std_fd(r.fd)) {
+         err_msg = "error: redirection fd not supported (only 0,1,2)\n";
+         return 2;
+      }
+
+      if (r.fd == 0 && !save_if_needed(0, save0)) return 1;
+      if (r.fd == 1 && !save_if_needed(1, save1)) return 1;
+      if (r.fd == 2 && !save_if_needed(2, save2)) return 1;
+
+      const int ofd = open_redir_fd(r);
+      if (ofd < 0) {
+         err_msg = "error: cannot open '" + r.target + "': " +
+                   std::string(::strerror(-ofd)) + "\n";
+         return 1;
+      }
+
+      UniqueFd opened(ofd);
+
+      if (::dup2(opened.get(), r.fd) < 0) {
+         err_msg = "error: dup2 failed\n";
+         return 1;
+      }
+   }
+
+   return 0;
+}
+
+void restore_std_fds(UniqueFd& save0, UniqueFd& save1, UniqueFd& save2) {
+   if (save0.get() != -1) {
+      (void)::dup2(save0.get(), 0);
+      save0.reset();
+   }
+   if (save1.get() != -1) {
+      (void)::dup2(save1.get(), 1);
+      save1.reset();
+   }
+   if (save2.get() != -1) {
+      (void)::dup2(save2.get(), 2);
+      save2.reset();
+   }
+}
+
 } // namespace
 
 Executor::Executor(Builtins builtins, const ExecPolicy& policy,
@@ -87,19 +199,53 @@ Executor::Executor(Builtins builtins, const ExecPolicy& policy,
    , oldpwd_(oldpwd) {}
 
 int Executor::run_simple(const SimpleCommand& cmd) {
-   if (cmd.argv.empty()) return 0;
+   // Allow redirection-only commands.
+   if (cmd.argv.empty()) {
+      if (cmd.redirs.empty()) return 0;
+      UniqueFd save0, save1, save2;
+      std::string em;
+      const int rc =
+         apply_redirs_in_process(cmd.redirs, save0, save1, save2, em);
+      if (rc != 0) {
+         if (em.empty()) em = "error: redirection failed\n";
+         fd_write_all(STDERR_FILENO, em);
+         restore_std_fds(save0, save1, save2);
+         return (rc == 2) ? 2 : 1;
+      }
+      // For now, do not persist redirections in the shell process.
+      restore_std_fds(save0, save1, save2);
+      return 0;
+   }
+
    if (!sec_.identity_unchanged()) return deny_privilege_drift();
 
+   // Built-in
    if (auto fn = builtins_.find(cmd.argv.front())) {
+      UniqueFd save0, save1, save2;
+      std::string em;
+      const int rc =
+         apply_redirs_in_process(cmd.redirs, save0, save1, save2, em);
+      if (rc != 0) {
+         if (em.empty()) em = "error: redirection failed\n";
+         fd_write_all(STDERR_FILENO, em);
+         restore_std_fds(save0, save1, save2);
+         return (rc == 2) ? 2 : 1;
+      }
+
       BuiltinContext ctx{.root = policy_.root(),
                          .in_fd = STDIN_FILENO,
                          .out_fd = STDOUT_FILENO,
                          .err_fd = STDERR_FILENO,
                          .cwd = cwd_,
                          .oldpwd = oldpwd_};
-      return (*fn)(ctx, cmd.argv);
+
+      const int st = (*fn)(ctx, cmd.argv);
+
+      restore_std_fds(save0, save1, save2);
+      return st;
    }
 
+   // External
    std::string reason;
    if (!policy_.allow_external(cmd.argv, reason)) {
       if (reason.empty()) reason = "disallowed by policy";
@@ -107,11 +253,22 @@ int Executor::run_simple(const SimpleCommand& cmd) {
       return 126;
    }
 
+   UniqueFd in_owner, out_owner, err_owner;
+   int in_fd = -1, out_fd = -1, err_fd = -1;
+   std::string em;
+   const int rc = apply_redirs_to_spawn(cmd.redirs, in_fd, out_fd, err_fd,
+                                        in_owner, out_owner, err_owner, em);
+   if (rc != 0) {
+      if (em.empty()) em = "error: redirection failed\n";
+      fd_write_all(STDERR_FILENO, em);
+      return (rc == 2) ? 2 : 1;
+   }
+
    SpawnSpec spec;
    spec.argv = cmd.argv;
-   spec.stdin_fd = -1;
-   spec.stdout_fd = -1;
-   spec.stderr_fd = -1;
+   spec.stdin_fd = in_fd;
+   spec.stdout_fd = out_fd;
+   spec.stderr_fd = err_fd;
 
    const auto r = policy_.spawn_external(spec);
    if (r.pid_or_err < 0) {
@@ -132,7 +289,6 @@ int Executor::run_simple(const SimpleCommand& cmd) {
 
 int Executor::run_pipeline_builtin_first(const SimpleCommand& first,
                                          const Pipeline& pipeline) {
-
    if (!sec_.identity_unchanged()) return deny_privilege_drift();
 
    // Pipe from builtin stdout -> stdin of the external pipeline.
@@ -148,20 +304,22 @@ int Executor::run_pipeline_builtin_first(const SimpleCommand& first,
 
    for (std::size_t i = 1; i < pipeline.stages.size(); ++i) {
       const auto& st = pipeline.stages[i];
-      if (st.argv.empty()) return 2;
+      if (st.argv.empty() && st.redirs.empty()) return 2;
 
-      if (builtins_.find(st.argv.front())) {
+      if (!st.argv.empty() && builtins_.find(st.argv.front())) {
          fd_write_all(STDERR_FILENO,
                       "error: built-ins in non-first pipeline stages "
                       "not implemented yet\n");
          return 2;
       }
 
-      std::string reason;
-      if (!policy_.allow_external(st.argv, reason)) {
-         if (reason.empty()) reason = "disallowed by policy";
-         fd_write_all(STDERR_FILENO, "error: " + reason + "\n");
-         return 126;
+      if (!st.argv.empty()) {
+         std::string reason;
+         if (!policy_.allow_external(st.argv, reason)) {
+            if (reason.empty()) reason = "disallowed by policy";
+            fd_write_all(STDERR_FILENO, "error: " + reason + "\n");
+            return 126;
+         }
       }
 
       UniqueFd next_read;
@@ -172,15 +330,43 @@ int Executor::run_pipeline_builtin_first(const SimpleCommand& first,
          if (int ec = make_pipe(next_read, next_write); ec != 0) return 1;
       }
 
+      // Redirection-only stage: treat as no-op.
+      if (st.argv.empty()) {
+         prev_read.reset();
+         if (!last) {
+            next_write.reset();
+            prev_read = std::move(next_read);
+         }
+         continue;
+      }
+
       SpawnSpec spec;
       spec.argv = st.argv;
       spec.stdin_fd = prev_read.get();
       spec.stdout_fd = last ? -1 : next_write.get();
       spec.stderr_fd = -1;
 
-      // Critical: ensure the external child does not keep the builtin write end
-      // open (otherwise EOF never reaches it).
+      // Ensure the external child does not keep the builtin write end open.
       spec.close_fds.push_back(write_end.get());
+
+      // Apply stage redirections (override pipe defaults).
+      {
+         UniqueFd rin, rout, rerr;
+         int in_fd = spec.stdin_fd;
+         int out_fd = spec.stdout_fd;
+         int err_fd = spec.stderr_fd;
+         std::string em;
+         const int rc = apply_redirs_to_spawn(st.redirs, in_fd, out_fd, err_fd,
+                                              rin, rout, rerr, em);
+         if (rc != 0) {
+            if (em.empty()) em = "error: redirection failed\n";
+            fd_write_all(STDERR_FILENO, em);
+            return (rc == 2) ? 2 : 1;
+         }
+         spec.stdin_fd = in_fd;
+         spec.stdout_fd = out_fd;
+         spec.stderr_fd = err_fd;
+      }
 
       const auto r = policy_.spawn_external(spec);
 
@@ -198,16 +384,48 @@ int Executor::run_pipeline_builtin_first(const SimpleCommand& first,
       prev_read = std::move(next_read);
    }
 
-   // Run builtin writing to pipe.
+   // Run builtin writing to pipe (or redirected destination).
    int builtin_status = 0;
    if (auto fn = builtins_.find(first.argv.front())) {
+      UniqueFd save0, save1, save2;
+      std::string em;
+
+      // If the builtin has a stdout redirection, it should override the pipe.
+      // We implement this by dup2'ing in-process before calling the builtin.
+      // (stdin redirs also apply to builtins here; stdout redirs may bypass
+      // pipe.)
+      const int rc =
+         apply_redirs_in_process(first.redirs, save0, save1, save2, em);
+      if (rc != 0) {
+         if (em.empty()) em = "error: redirection failed\n";
+         fd_write_all(STDERR_FILENO, em);
+         restore_std_fds(save0, save1, save2);
+         return (rc == 2) ? 2 : 1;
+      }
+
       BuiltinContext ctx{.root = policy_.root(),
                          .in_fd = STDIN_FILENO,
                          .out_fd = write_end.get(),
                          .err_fd = STDERR_FILENO,
                          .cwd = cwd_,
                          .oldpwd = oldpwd_};
+
+      // If stdout wasn't redirected, ctx.out_fd should be the pipe write end.
+      // But if it *was* redirected, STDOUT_FILENO now points at the file; ctx
+      // still writes to write_end unless builtin uses stdout fd.
+      //
+      // In your builtins, you already use ctx.out_fd, so we must choose:
+      // - if no stdout redir in first.redirs -> use pipe write_end
+      // - if stdout redir present -> use STDOUT_FILENO
+      bool stdout_redirected = false;
+      for (const auto& r : first.redirs) {
+         if (r.fd == 1) stdout_redirected = true;
+      }
+      if (stdout_redirected) ctx.out_fd = STDOUT_FILENO;
+
       builtin_status = (*fn)(ctx, first.argv);
+
+      restore_std_fds(save0, save1, save2);
    } else {
       builtin_status = 2;
    }
@@ -239,17 +457,21 @@ int Executor::run_pipeline_all_external(const Pipeline& pipeline) {
 
    // Validate and policy-check first (fail fast, no partial execution).
    for (const auto& st : pipeline.stages) {
-      if (st.argv.empty()) return 2;
-      if (builtins_.find(st.argv.front())) {
+      if (st.argv.empty() && st.redirs.empty()) return 2;
+
+      if (!st.argv.empty() && builtins_.find(st.argv.front())) {
          fd_write_all(STDERR_FILENO,
                       "error: built-ins in pipelines not implemented yet\n");
          return 2;
       }
-      std::string reason;
-      if (!policy_.allow_external(st.argv, reason)) {
-         if (reason.empty()) reason = "disallowed by policy";
-         fd_write_all(STDERR_FILENO, "error: " + reason + "\n");
-         return 126;
+
+      if (!st.argv.empty()) {
+         std::string reason;
+         if (!policy_.allow_external(st.argv, reason)) {
+            if (reason.empty()) reason = "disallowed by policy";
+            fd_write_all(STDERR_FILENO, "error: " + reason + "\n");
+            return 126;
+         }
       }
    }
 
@@ -259,6 +481,7 @@ int Executor::run_pipeline_all_external(const Pipeline& pipeline) {
    UniqueFd prev_read;
 
    for (std::size_t i = 0; i < pipeline.stages.size(); ++i) {
+      const auto& st = pipeline.stages[i];
       const bool last = (i + 1 == pipeline.stages.size());
 
       UniqueFd next_read;
@@ -268,10 +491,43 @@ int Executor::run_pipeline_all_external(const Pipeline& pipeline) {
       }
 
       SpawnSpec spec;
-      spec.argv = pipeline.stages[i].argv;
+
+      // Redirection-only stage in a pipeline: treat as no-op.
+      // (You can refine semantics later; this keeps execution deterministic.)
+      if (st.argv.empty()) {
+         // Close pipe fds as if this stage consumed/produced nothing.
+         // Upstream writer will see EOF once parent closes its copies.
+         prev_read.reset();
+         if (!last) {
+            next_write.reset();
+            prev_read = std::move(next_read);
+         }
+         continue;
+      }
+
+      spec.argv = st.argv;
       spec.stdin_fd = prev_read.get();
       spec.stdout_fd = last ? -1 : next_write.get();
       spec.stderr_fd = -1;
+
+      // Apply stage redirections (override pipe defaults for 0/1/2).
+      {
+         UniqueFd rin, rout, rerr;
+         int in_fd = spec.stdin_fd;
+         int out_fd = spec.stdout_fd;
+         int err_fd = spec.stderr_fd;
+         std::string em;
+         const int rc = apply_redirs_to_spawn(st.redirs, in_fd, out_fd, err_fd,
+                                              rin, rout, rerr, em);
+         if (rc != 0) {
+            if (em.empty()) em = "error: redirection failed\n";
+            fd_write_all(STDERR_FILENO, em);
+            return (rc == 2) ? 2 : 1;
+         }
+         spec.stdin_fd = in_fd;
+         spec.stdout_fd = out_fd;
+         spec.stderr_fd = err_fd;
+      }
 
       const auto r = policy_.spawn_external(spec);
 
