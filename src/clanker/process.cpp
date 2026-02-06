@@ -37,17 +37,27 @@ int spawn_external(const std::vector<std::string>& argv, int stdin_fd,
    posix_spawn_file_actions_t actions;
    posix_spawn_file_actions_init(&actions);
 
-   // Close requested fds in the child (before exec).
-   for (int fd : close_fds) {
-      if (fd >= 0) posix_spawn_file_actions_addclose(&actions, fd);
-   }
-
+   // 1) dup2 first (so the source fds must still be open)
    if (stdin_fd != -1)
       posix_spawn_file_actions_adddup2(&actions, stdin_fd, STDIN_FILENO);
    if (stdout_fd != -1)
       posix_spawn_file_actions_adddup2(&actions, stdout_fd, STDOUT_FILENO);
    if (stderr_fd != -1)
       posix_spawn_file_actions_adddup2(&actions, stderr_fd, STDERR_FILENO);
+
+   // 2) close requested fds in the child (pipeline hygiene, etc.)
+   for (int fd : close_fds) {
+      if (fd >= 0) posix_spawn_file_actions_addclose(&actions, fd);
+   }
+
+   // 3) close the original fds used as dup2 sources (child-side hygiene)
+   auto close_if_extra = [&](int fd, int stdfd) {
+      if (fd != -1 && fd != stdfd)
+         posix_spawn_file_actions_addclose(&actions, fd);
+   };
+   close_if_extra(stdin_fd, STDIN_FILENO);
+   close_if_extra(stdout_fd, STDOUT_FILENO);
+   close_if_extra(stderr_fd, STDERR_FILENO);
 
    auto cargv = to_cargv(argv);
 
