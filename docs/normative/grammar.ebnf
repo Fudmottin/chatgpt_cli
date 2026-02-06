@@ -1,0 +1,26 @@
+# clanker — target grammar (normative)
+
+input          ::= list
+
+list           ::= andor (terminator andor)* terminator?
+
+terminator     ::= ";" | NEWLINE | "&"
+
+andor          ::= pipeline ( ("&&" | "||") pipeline )*
+
+pipeline       ::= command ( "|" command )*
+
+command        ::= simple_command redirection*
+
+simple_command ::= word+
+
+redirection    ::= io_number? redir_op word
+
+io_number      ::= DIGITS
+redir_op       ::= "<" | ">" | ">>"
+
+word           ::= WORD_TOKEN
+
+# WORD_TOKEN is produced by the lexer.
+# It may contain literal text and embedded expansions.
+
